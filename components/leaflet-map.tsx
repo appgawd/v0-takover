@@ -1,20 +1,8 @@
 "use client"
 
-import type React from "react"
-
-import { useEffect, useState, useRef } from "react"
-import dynamic from "next/dynamic"
-import { Card } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Search, Loader2, AlertCircle, Layers, MapIcon } from "lucide-react"
-import { Badge } from "@/components/ui/badge"
-
-// Dynamically import map components to avoid SSR issues
-const MapContainer = dynamic(() => import("react-leaflet").then((mod) => mod.MapContainer), { ssr: false })
-const TileLayer = dynamic(() => import("react-leaflet").then((mod) => mod.TileLayer), { ssr: false })
-const Marker = dynamic(() => import("react-leaflet").then((mod) => mod.Marker), { ssr: false })
-const Popup = dynamic(() => import("react-leaflet").then((mod) => mod.Popup), { ssr: false })
+import { useEffect, useRef, useState } from "react"
+import { Card, CardContent } from "@/components/ui/card"
+import { Loader2 } from "lucide-react"
 
 interface Event {
   id: number
@@ -27,421 +15,223 @@ interface Event {
   status: string
 }
 
-interface SearchResult {
-  lat: string
-  lon: string
-  display_name: string
-  place_id: string
-}
-
 interface LeafletMapProps {
   events: Event[]
-  userLocation: [number, number] | null
-  onEventSelect: (event: Event | null) => void
-  selectedEvent: Event | null
+  userLocation?: [number, number] | null
+  onEventSelect: (event: Event) => void
+  selectedEvent?: Event | null
 }
 
-// Custom map component that handles Leaflet initialization
-function MapComponent({ events, userLocation, onEventSelect, selectedEvent }: LeafletMapProps) {
-  const [map, setMap] = useState<any>(null)
-  const [leafletLoaded, setLeafletLoaded] = useState(false)
-  const [searchQuery, setSearchQuery] = useState("")
-  const [searchResults, setSearchResults] = useState<SearchResult[]>([])
-  const [isSearching, setIsSearching] = useState(false)
-  const [searchError, setSearchError] = useState<string | null>(null)
-  const [mapStyle, setMapStyle] = useState<"2d" | "3d">("2d")
-  const [mapTheme, setMapTheme] = useState<"dark" | "light">("dark")
-  const mapRef = useRef<any>(null)
-
-  // Default location (Bellevue, WA)
-  const defaultLocation: [number, number] = [-122.2015, 47.6101]
-  const mapCenter = userLocation || defaultLocation
+export function LeafletMap({ events, userLocation, onEventSelect, selectedEvent }: LeafletMapProps) {
+  const mapContainer = useRef<HTMLDivElement>(null)
+  const map = useRef<any>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string>("")
+  const markersRef = useRef<any[]>([])
 
   useEffect(() => {
-    // Dynamically import Leaflet to avoid SSR issues
+    let isMounted = true
+
     const loadLeaflet = async () => {
-      if (typeof window !== "undefined") {
+      try {
+        // Dynamically import Leaflet
         const L = await import("leaflet")
 
-        // Fix for default markers
-        delete (L.Icon.Default.prototype as any)._getIconUrl
-        L.Icon.Default.mergeOptions({
-          iconRetinaUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png",
-          iconUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png",
-          shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png",
+        // Load Leaflet CSS
+        if (!document.querySelector('link[href*="leaflet.css"]')) {
+          const link = document.createElement("link")
+          link.rel = "stylesheet"
+          link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+          document.head.appendChild(link)
+        }
+
+        if (!isMounted || !mapContainer.current || map.current) return
+
+        // Initialize map
+        const initialCenter: [number, number] = userLocation || [34.0522, -118.2437] // Default to LA
+        map.current = L.map(mapContainer.current).setView(initialCenter, userLocation ? 13 : 11)
+
+        // Add OpenStreetMap tiles
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+          attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+          maxZoom: 19,
+        }).addTo(map.current)
+
+        // Custom marker icons
+        const createCustomIcon = (color: string, isUser = false) => {
+          const size = isUser ? 12 : 20
+          return L.divIcon({
+            className: "custom-marker",
+            html: `<div style="
+              width: ${size}px;
+              height: ${size}px;
+              background-color: ${color};
+              border: 2px solid white;
+              border-radius: 50%;
+              box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+              ${isUser ? "animation: pulse 2s infinite;" : ""}
+            "></div>`,
+            iconSize: [size, size],
+            iconAnchor: [size / 2, size / 2],
+          })
+        }
+
+        // Add user location marker
+        if (userLocation) {
+          const userMarker = L.marker(userLocation, {
+            icon: createCustomIcon("#3b82f6", true),
+          }).addTo(map.current)
+
+          userMarker.bindPopup(`
+            <div style="color: black; font-weight: bold;">
+              📍 Your Location
+            </div>
+          `)
+        }
+
+        // Add event markers
+        markersRef.current = events.map((event) => {
+          const color = event.status === "live" ? "#10b981" : event.status === "upcoming" ? "#3b82f6" : "#f59e0b"
+
+          const marker = L.marker(event.coordinates, {
+            icon: createCustomIcon(color),
+          }).addTo(map.current)
+
+          marker.bindPopup(`
+            <div style="color: black; min-width: 200px;">
+              <h3 style="margin: 0 0 8px 0; font-weight: bold;">${event.name}</h3>
+              <p style="margin: 0 0 4px 0; color: #666;">📍 ${event.location}</p>
+              <p style="margin: 0 0 4px 0; color: #666;">⏰ ${event.time}</p>
+              <p style="margin: 0 0 8px 0; color: #666;">👥 ${event.attendees} attending</p>
+              <div style="
+                background: ${color};
+                color: white;
+                padding: 2px 8px;
+                border-radius: 12px;
+                font-size: 12px;
+                display: inline-block;
+              ">${event.type}</div>
+            </div>
+          `)
+
+          marker.on("click", () => {
+            onEventSelect(event)
+          })
+
+          return { marker, event }
         })
 
-        setLeafletLoaded(true)
+        setIsLoading(false)
+      } catch (error) {
+        console.error("Failed to load Leaflet:", error)
+        setLoadError("Failed to load map. Please refresh the page.")
+        setIsLoading(false)
       }
     }
 
     loadLeaflet()
-  }, [])
 
-  const handleSearch = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!searchQuery.trim()) return
-
-    setIsSearching(true)
-    setSearchError(null)
-
-    try {
-      const response = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}&limit=5&addressdetails=1`,
-      )
-
-      if (!response.ok) {
-        throw new Error("Failed to fetch search results")
+    return () => {
+      isMounted = false
+      if (map.current) {
+        map.current.remove()
+        map.current = null
       }
+    }
+  }, [userLocation])
 
-      const data: SearchResult[] = await response.json()
-      setSearchResults(data)
+  // Update map when user location changes
+  useEffect(() => {
+    if (map.current && userLocation) {
+      map.current.setView(userLocation, 13)
+    }
+  }, [userLocation])
 
-      if (data.length > 0 && map) {
-        const { lat, lon } = data[0]
-        const newCenter: [number, number] = [Number.parseFloat(lat), Number.parseFloat(lon)]
-        map.setView(newCenter, 13)
-      } else if (data.length === 0) {
-        setSearchError("No results found. Try a different search term.")
+  // Highlight selected event
+  useEffect(() => {
+    if (map.current && selectedEvent) {
+      const selectedMarker = markersRef.current.find((m) => m.event.id === selectedEvent.id)
+      if (selectedMarker) {
+        map.current.setView(selectedEvent.coordinates, 15)
+        selectedMarker.marker.openPopup()
       }
-    } catch (error) {
-      console.error("Search error:", error)
-      setSearchError("Search failed. Please try again.")
-    } finally {
-      setIsSearching(false)
     }
-  }
+  }, [selectedEvent])
 
-  const clearSearch = () => {
-    setSearchQuery("")
-    setSearchResults([])
-    setSearchError(null)
-  }
-
-  const getEventMarkerColor = (status: string) => {
-    switch (status) {
-      case "live":
-        return "#10b981" // green
-      case "upcoming":
-        return "#3b82f6" // blue
-      default:
-        return "#f59e0b" // orange
-    }
-  }
-
-  const getUserLocationIcon = () => {
-    if (typeof window === "undefined") return null
-
-    return {
-      iconUrl: `data:image/svg+xml;base64,${btoa(`
-        <svg width="20" height="20" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
-          <circle cx="10" cy="10" r="8" fill="#3b82f6" stroke="#ffffff" strokeWidth="2"/>
-          <circle cx="10" cy="10" r="3" fill="#ffffff"/>
-        </svg>
-      `)}`,
-      iconSize: [20, 20],
-      iconAnchor: [10, 10],
-    }
-  }
-
-  const getEventIcon = (event: Event) => {
-    if (typeof window === "undefined") return null
-
-    const color = getEventMarkerColor(event.status)
-    return {
-      iconUrl: `data:image/svg+xml;base64,${btoa(`
-        <svg width="25" height="41" viewBox="0 0 25 41" xmlns="http://www.w3.org/2000/svg">
-          <path d="M12.5 0C5.6 0 0 5.6 0 12.5C0 19.4 12.5 41 12.5 41S25 19.4 25 12.5C25 5.6 19.4 0 12.5 0Z" fill="${color}" stroke="#ffffff" strokeWidth="2"/>
-          <circle cx="12.5" cy="12.5" r="6" fill="#ffffff"/>
-        </svg>
-      `)}`,
-      iconSize: [25, 41],
-      iconAnchor: [12, 41],
-      popupAnchor: [0, -41],
-    }
-  }
-
-  const getSearchIcon = () => {
-    if (typeof window === "undefined") return null
-
-    return {
-      iconUrl: `data:image/svg+xml;base64,${btoa(`
-        <svg width="25" height="41" viewBox="0 0 25 41" xmlns="http://www.w3.org/2000/svg">
-          <path d="M12.5 0C5.6 0 0 5.6 0 12.5C0 19.4 12.5 41 12.5 41S25 19.4 25 12.5C25 5.6 19.4 0 12.5 0Z" fill="#ef4444" stroke="#ffffff" strokeWidth="2"/>
-          <circle cx="12.5" cy="12.5" r="6" fill="#ffffff"/>
-        </svg>
-      `)}`,
-      iconSize: [25, 41],
-      iconAnchor: [12, 41],
-      popupAnchor: [0, -41],
-    }
-  }
-
-  const getTileLayerUrl = () => {
-    if (mapStyle === "3d") {
-      // MapTiler 3D tiles (requires API key in production)
-      return mapTheme === "dark"
-        ? "https://api.maptiler.com/maps/streets-v2-dark/{z}/{x}/{y}.png?key=demo"
-        : "https://api.maptiler.com/maps/streets-v2/{z}/{x}/{y}.png?key=demo"
-    } else {
-      // OpenStreetMap tiles with custom dark theme
-      return mapTheme === "dark"
-        ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-        : "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-    }
-  }
-
-  const getTileLayerAttribution = () => {
-    if (mapStyle === "3d") {
-      return '&copy; <a href="https://www.maptiler.com/">MapTiler</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-    } else {
-      return mapTheme === "dark"
-        ? '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-        : '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-    }
-  }
-
-  if (!leafletLoaded) {
+  if (loadError) {
     return (
-      <Card className="h-96 bg-gray-800 border-gray-700 flex items-center justify-center">
-        <div className="text-center">
-          <Loader2 className="w-8 h-8 mx-auto mb-2 text-gray-400 animate-spin" />
-          <p className="text-gray-400">Loading map...</p>
-        </div>
+      <Card className="bg-red-900 border-red-700">
+        <CardContent className="p-4 text-center">
+          <p className="text-red-200">{loadError}</p>
+        </CardContent>
       </Card>
     )
   }
 
   return (
-    <div className="space-y-4">
-      {/* Search Form */}
-      <Card className="bg-gray-800 border-gray-700">
-        <div className="p-4">
-          <form onSubmit={handleSearch} className="space-y-3">
-            <div className="flex gap-2">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <Input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search for locations..."
-                  className="pl-10 bg-gray-700 border-gray-600 text-white placeholder-gray-400"
-                  disabled={isSearching}
-                />
-              </div>
-              <Button
-                type="submit"
-                disabled={isSearching || !searchQuery.trim()}
-                className="bg-green-600 hover:bg-green-700"
-              >
-                {isSearching ? <Loader2 className="w-4 h-4 animate-spin" /> : "Search"}
-              </Button>
-              {(searchQuery || searchResults.length > 0) && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={clearSearch}
-                  className="border-gray-600 text-gray-300 bg-transparent"
-                >
-                  Clear
-                </Button>
-              )}
-            </div>
+    <div className="relative">
+      <div
+        ref={mapContainer}
+        className="h-96 rounded-lg border border-gray-700 bg-gray-800"
+        style={{ minHeight: "384px" }}
+      />
 
-            {/* Map Controls */}
-            <div className="flex gap-2 flex-wrap">
-              <div className="flex gap-1">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={mapStyle === "2d" ? "default" : "outline"}
-                  onClick={() => setMapStyle("2d")}
-                  className={mapStyle === "2d" ? "bg-green-600 hover:bg-green-700" : "border-gray-600 bg-transparent"}
-                >
-                  <MapIcon className="w-4 h-4 mr-1" />
-                  2D
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={mapStyle === "3d" ? "default" : "outline"}
-                  onClick={() => setMapStyle("3d")}
-                  className={mapStyle === "3d" ? "bg-green-600 hover:bg-green-700" : "border-gray-600 bg-transparent"}
-                >
-                  <Layers className="w-4 h-4 mr-1" />
-                  3D
-                </Button>
-              </div>
-              <div className="flex gap-1">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={mapTheme === "dark" ? "default" : "outline"}
-                  onClick={() => setMapTheme("dark")}
-                  className={mapTheme === "dark" ? "bg-gray-600 hover:bg-gray-700" : "border-gray-600 bg-transparent"}
-                >
-                  Dark
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={mapTheme === "light" ? "default" : "outline"}
-                  onClick={() => setMapTheme("light")}
-                  className={mapTheme === "light" ? "bg-gray-600 hover:bg-gray-700" : "border-gray-600 bg-transparent"}
-                >
-                  Light
-                </Button>
-              </div>
-            </div>
-
-            {/* Search Error */}
-            {searchError && (
-              <div className="flex items-center gap-2 text-red-400 text-sm">
-                <AlertCircle className="w-4 h-4" />
-                <span>{searchError}</span>
-              </div>
-            )}
-
-            {/* Search Results Count */}
-            {searchResults.length > 0 && (
-              <div className="text-sm text-gray-400">
-                Found {searchResults.length} result{searchResults.length !== 1 ? "s" : ""}
-              </div>
-            )}
-          </form>
-        </div>
-      </Card>
-
-      {/* Map */}
-      <Card className="bg-gray-800 border-gray-700 overflow-hidden">
-        <div className="h-96 relative">
-          <MapContainer
-            center={mapCenter}
-            zoom={13}
-            style={{ height: "100%", width: "100%" }}
-            ref={mapRef}
-            whenCreated={setMap}
-            className={mapTheme === "dark" ? "dark-map" : ""}
-          >
-            <TileLayer
-              attribution={getTileLayerAttribution()}
-              url={getTileLayerUrl()}
-              className={mapTheme === "dark" ? "dark-tiles" : ""}
-            />
-
-            {/* User Location Marker */}
-            {userLocation && (
-              <Marker position={userLocation} icon={getUserLocationIcon()}>
-                <Popup>
-                  <div className="text-center">
-                    <strong>Your Location</strong>
-                    <br />
-                    <small>
-                      {userLocation[0].toFixed(4)}, {userLocation[1].toFixed(4)}
-                    </small>
-                  </div>
-                </Popup>
-              </Marker>
-            )}
-
-            {/* Event Markers */}
-            {events.map((event) => (
-              <Marker
-                key={event.id}
-                position={event.coordinates}
-                icon={getEventIcon(event)}
-                eventHandlers={{
-                  click: () => onEventSelect(event),
-                }}
-              >
-                <Popup>
-                  <div className="min-w-[200px]">
-                    <h3 className="font-semibold text-gray-900 mb-1">{event.name}</h3>
-                    <p className="text-sm text-gray-600 mb-2">{event.location}</p>
-                    <div className="flex justify-between items-center mb-2">
-                      <Badge
-                        variant="secondary"
-                        className={`text-xs text-white ${
-                          event.type === "public"
-                            ? "bg-green-600"
-                            : event.type === "invite-only"
-                              ? "bg-orange-600"
-                              : "bg-blue-600"
-                        }`}
-                      >
-                        {event.type}
-                      </Badge>
-                      <span
-                        className={`text-xs ${
-                          event.status === "live"
-                            ? "text-green-600"
-                            : event.status === "upcoming"
-                              ? "text-blue-600"
-                              : "text-orange-600"
-                        }`}
-                      >
-                        {event.time}
-                      </span>
-                    </div>
-                    <p className="text-xs text-gray-500">{event.attendees} attending</p>
-                  </div>
-                </Popup>
-              </Marker>
-            ))}
-
-            {/* Search Result Markers */}
-            {searchResults.map((result, index) => (
-              <Marker
-                key={`search-${result.place_id || index}`}
-                position={[Number.parseFloat(result.lat), Number.parseFloat(result.lon)]}
-                icon={getSearchIcon()}
-              >
-                <Popup>
-                  <div className="min-w-[200px]">
-                    <h3 className="font-semibold text-gray-900 mb-1">Search Result</h3>
-                    <p className="text-sm text-gray-600">{result.display_name}</p>
-                    <p className="text-xs text-gray-500 mt-1">
-                      {Number.parseFloat(result.lat).toFixed(4)}, {Number.parseFloat(result.lon).toFixed(4)}
-                    </p>
-                  </div>
-                </Popup>
-              </Marker>
-            ))}
-          </MapContainer>
-
-          {/* Map Legend */}
-          <div className="absolute bottom-4 left-4 bg-gray-800 bg-opacity-90 rounded-lg p-3 text-xs text-white">
-            <h4 className="font-semibold mb-2">Legend</h4>
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
-                <span>Your Location</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-                <span>Live Events</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 bg-blue-400 rounded-full"></div>
-                <span>Upcoming Events</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 bg-orange-500 rounded-full"></div>
-                <span>Scheduled Events</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 bg-red-500 rounded-full"></div>
-                <span>Search Results</span>
-              </div>
-            </div>
+      {isLoading && (
+        <div className="absolute inset-0 bg-gray-800 rounded-lg flex items-center justify-center">
+          <div className="text-center">
+            <Loader2 className="w-8 h-8 animate-spin mx-auto mb-2 text-green-400" />
+            <p className="text-gray-400">Loading interactive map...</p>
           </div>
         </div>
-      </Card>
+      )}
+
+      {/* Map Legend */}
+      <div className="absolute top-4 left-4 bg-gray-900 bg-opacity-90 rounded-lg p-3 z-[1000]">
+        <div className="text-xs font-semibold mb-2 text-white">Legend</div>
+        <div className="space-y-1 text-xs text-white">
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+            <span>Live Events</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
+            <span>Upcoming</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-3 bg-orange-500 rounded-full"></div>
+            <span>Scheduled</span>
+          </div>
+          {userLocation && (
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 bg-blue-500 rounded-full animate-pulse"></div>
+              <span>Your Location</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Map Attribution */}
+      <div className="absolute bottom-2 right-2 text-xs text-gray-400 bg-gray-900 bg-opacity-75 px-2 py-1 rounded">
+        OpenStreetMap
+      </div>
+
+      <style jsx global>{`
+        @keyframes pulse {
+          0%,
+          100% {
+            opacity: 1;
+          }
+          50% {
+            opacity: 0.5;
+          }
+        }
+        .leaflet-popup-content-wrapper {
+          border-radius: 8px;
+        }
+        .leaflet-popup-tip {
+          background: white;
+        }
+      `}</style>
     </div>
   )
-}
-
-export function LeafletMap(props: LeafletMapProps) {
-  return <MapComponent {...props} />
 }
