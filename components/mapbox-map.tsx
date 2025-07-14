@@ -17,6 +17,11 @@ import {
   AlertTriangle,
   Gauge,
   Shield,
+  Plus,
+  Minus,
+  Navigation,
+  Eye,
+  EyeOff,
 } from "lucide-react"
 
 interface Event {
@@ -116,238 +121,22 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
         return "mapbox://styles/mapbox/satellite-streets-v12"
       case "streets":
       default:
-        return mapView === "streets" ? tronDarkStyle : "mapbox://styles/mapbox/light-v11"
+        return "mapbox://styles/rarri/cmd1nzc0b00hc01r48s6760kq" // New custom style URL
     }
-  }
-
-  const tronDarkStyle = {
-    version: 8,
-    name: "Tron Dark",
-    sprite: "mapbox://sprites/mapbox/dark-v11",
-    glyphs: "mapbox://fonts/mapbox/{fontstack}/{range}.pbf",
-    sources: {
-      "mapbox-streets": {
-        type: "vector",
-        url: "mapbox://mapbox.mapbox-streets-v8",
-      },
-    },
-    layers: [
-      {
-        id: "background",
-        type: "background",
-        paint: {
-          "background-color": "#0a0a0f",
-        },
-      },
-      {
-        id: "water",
-        type: "fill",
-        source: "mapbox-streets",
-        "source-layer": "water",
-        paint: {
-          "fill-color": "#001122",
-          "fill-outline-color": "#00ffff",
-        },
-      },
-      {
-        id: "land",
-        type: "fill",
-        source: "mapbox-streets",
-        "source-layer": "landuse",
-        paint: {
-          "fill-color": "#0f0f1a",
-        },
-      },
-      {
-        id: "road-highway",
-        type: "line",
-        source: "mapbox-streets",
-        "source-layer": "road",
-        filter: ["==", "class", "motorway"],
-        paint: {
-          "line-color": "#00ffff",
-          "line-width": {
-            base: 1.2,
-            stops: [
-              [6, 0.5],
-              [20, 30],
-            ],
-          },
-          "line-opacity": 0.8,
-        },
-      },
-      {
-        id: "road-primary",
-        type: "line",
-        source: "mapbox-streets",
-        "source-layer": "road",
-        filter: ["==", "class", "primary"],
-        paint: {
-          "line-color": "#0099ff",
-          "line-width": {
-            base: 1.2,
-            stops: [
-              [6, 0.5],
-              [20, 20],
-            ],
-          },
-          "line-opacity": 0.7,
-        },
-      },
-      {
-        id: "road-secondary",
-        type: "line",
-        source: "mapbox-streets",
-        "source-layer": "road",
-        filter: ["in", "class", "secondary", "tertiary"],
-        paint: {
-          "line-color": "#0066cc",
-          "line-width": {
-            base: 1.2,
-            stops: [
-              [6, 0.5],
-              [20, 15],
-            ],
-          },
-          "line-opacity": 0.6,
-        },
-      },
-      {
-        id: "road-local",
-        type: "line",
-        source: "mapbox-streets",
-        "source-layer": "road",
-        filter: ["in", "class", "street", "street_limited"],
-        paint: {
-          "line-color": "#003366",
-          "line-width": {
-            base: 1.2,
-            stops: [
-              [6, 0.5],
-              [20, 10],
-            ],
-          },
-          "line-opacity": 0.5,
-        },
-      },
-      {
-        id: "building",
-        type: "fill-extrusion",
-        source: "mapbox-streets",
-        "source-layer": "building",
-        paint: {
-          "fill-extrusion-color": "#1a1a2e",
-          "fill-extrusion-height": ["get", "height"],
-          "fill-extrusion-base": ["get", "min_height"],
-          "fill-extrusion-opacity": buildingsVisible ? 0.8 : 0,
-          "fill-extrusion-vertical-gradient": true,
-        },
-      },
-      {
-        id: "building-hover",
-        type: "fill-extrusion",
-        source: "mapbox-streets",
-        "source-layer": "building",
-        filter: ["==", ["get", "id"], ""],
-        paint: {
-          "fill-extrusion-color": "#ffff00",
-          "fill-extrusion-height": ["get", "height"],
-          "fill-extrusion-base": ["get", "min_height"],
-          "fill-extrusion-opacity": 0.7,
-        },
-      },
-      {
-        id: "building-selected",
-        type: "fill-extrusion",
-        source: "mapbox-streets",
-        "source-layer": "building",
-        filter: ["in", ["get", "id"], ["literal", []]], // Corrected filter
-        paint: {
-          "fill-extrusion-color": "#00ffff",
-          "fill-extrusion-height": ["get", "height"],
-          "fill-extrusion-base": ["get", "min_height"],
-          "fill-extrusion-opacity": 0.9,
-        },
-      },
-      {
-        id: "road-hover",
-        type: "line",
-        source: "mapbox-streets",
-        "source-layer": "road",
-        filter: ["==", ["get", "id"], ""],
-        paint: {
-          "line-color": "#ffff00",
-          "line-width": {
-            base: 1.2,
-            stops: [
-              [6, 2],
-              [20, 40],
-            ],
-          },
-          "line-opacity": 0.8,
-        },
-      },
-      {
-        id: "place-labels",
-        type: "symbol",
-        source: "mapbox-streets",
-        "source-layer": "place_label",
-        layout: {
-          "text-field": ["get", "name"],
-          "text-font": ["Open Sans Bold", "Arial Unicode MS Bold"],
-          "text-size": 12,
-          "text-transform": "uppercase",
-        },
-        paint: {
-          "text-color": "#00ffff",
-          "text-halo-color": "#0a0a0f",
-          "text-halo-width": 2,
-        },
-      },
-      {
-        id: "poi-labels",
-        type: "symbol",
-        source: "mapbox-streets",
-        "source-layer": "poi_label",
-        layout: {
-          "text-field": ["get", "name"],
-          "text-font": ["Open Sans Regular", "Arial Unicode MS Regular"],
-          "text-size": 10,
-          "icon-image": ["get", "maki"],
-          "icon-size": 0.8,
-          "text-anchor": "top",
-          "text-offset": [0, 0.8],
-        },
-        paint: {
-          "text-color": "#00ccff",
-          "text-halo-color": "#0a0a0f",
-          "text-halo-width": 1,
-          "icon-opacity": 0.8,
-        },
-      },
-    ],
   }
 
   const addInteractionLayers = () => {
     if (!map.current) return
 
     // Only add interaction layers if the current map style supports them (i.e., has vector building/road data)
-    // The 'streets' (tronDarkStyle) already defines these layers.
-    // 'hybrid' (satellite-streets-v12) uses 'composite' source for vector data.
+    // The custom 'streets' style and 'hybrid' (satellite-streets-v12) use 'composite' source for vector data.
     // 'satellite' (satellite-v9) does NOT have vector building/road data.
-    if (mapView === "streets") {
-      // Tron style already has the layers defined, ensure their visibility is correct
-      safeSetPaint(map.current, "building", "fill-extrusion-opacity", buildingsVisible ? 0.8 : 0)
-      updateSelectedBuildingsFilter() // Ensure selected buildings filter is applied
-      return
-    }
-
     if (mapView === "satellite") {
       // No vector layers for interaction in satellite view
       return
     }
 
-    // For hybrid view, add interaction layers using 'composite' source
+    // For streets and hybrid views, add interaction layers using 'composite' source
     const buildingHoverLayer = {
       id: "building-hover",
       type: "fill-extrusion",
@@ -399,7 +188,7 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
     safeAddLayer(map.current, buildingSelectedLayer)
     safeAddLayer(map.current, roadHoverLayer)
 
-    // Also ensure the building visibility and selected filter are applied for hybrid view
+    // Also ensure the building visibility and selected filter are applied
     safeSetPaint(map.current, "building", "fill-extrusion-opacity", buildingsVisible ? 0.8 : 0)
     updateSelectedBuildingsFilter()
   }
@@ -1091,6 +880,86 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
               </div>
             </div>
           )}
+
+          {/* Map Controls - Right Side */}
+          <div className="absolute top-4 right-4 flex flex-col gap-2">
+            <Button
+              onClick={resetBearing}
+              size="sm"
+              className="bg-gray-900/90 hover:bg-gray-800 text-cyan-300 border border-cyan-500/30 backdrop-blur-sm"
+            >
+              <Navigation className="w-4 h-4" />
+            </Button>
+            <Button
+              onClick={zoomIn}
+              size="sm"
+              className="bg-gray-900/90 hover:bg-gray-800 text-cyan-300 border border-cyan-500/30 backdrop-blur-sm"
+            >
+              <Plus className="w-4 h-4" />
+            </Button>
+            <Button
+              onClick={zoomOut}
+              size="sm"
+              className="bg-gray-900/90 hover:bg-gray-800 text-cyan-300 border border-cyan-500/30 backdrop-blur-sm"
+            >
+              <Minus className="w-4 h-4" />
+            </Button>
+            <Button
+              onClick={toggleBuildings}
+              size="sm"
+              className="bg-gray-900/90 hover:bg-gray-800 text-cyan-300 border border-cyan-500/30 backdrop-blur-sm"
+            >
+              {buildingsVisible ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            </Button>
+          </div>
+
+          {/* Map Legend */}
+          <div className="absolute bottom-4 left-4 bg-gray-900/90 backdrop-blur-sm rounded-lg p-3 border border-cyan-500/30">
+            <div className="text-xs font-semibold mb-2 text-cyan-400 uppercase tracking-wider">Legend</div>
+            <div className="space-y-1 text-xs">
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 bg-green-400 rounded-full shadow-lg shadow-green-400/50"></div>
+                <span className="text-green-300">Live Events</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 bg-blue-400 rounded-full shadow-lg shadow-blue-400/50"></div>
+                <span className="text-blue-300">Upcoming</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 bg-orange-400 rounded-full shadow-lg shadow-orange-400/50"></div>
+                <span className="text-orange-300">Scheduled</span>
+              </div>
+              {userLocation && (
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 bg-cyan-400 rounded-full animate-pulse shadow-lg shadow-cyan-400/50"></div>
+                  <span className="text-cyan-300">Your Location</span>
+                </div>
+              )}
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 bg-yellow-400 rounded shadow-lg shadow-yellow-400/50"></div>
+                <span className="text-yellow-300">Hover Highlight</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 bg-cyan-400 rounded shadow-lg shadow-cyan-400/50"></div>
+                <span className="text-cyan-300">Selected ({selectedBuildings.length})</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Interaction Instructions */}
+          <div className="absolute top-4 left-4 bg-gray-900/90 backdrop-blur-sm rounded-lg p-3 border border-cyan-500/30 max-w-xs">
+            <div className="text-xs font-semibold mb-2 text-cyan-400 uppercase tracking-wider">Interactions</div>
+            <div className="space-y-1 text-xs text-cyan-300">
+              <div>• Hover: Highlight buildings/roads</div>
+              <div>• Single Click: Toggle building selection</div>
+              <div>• Double Click: View detailed info</div>
+              <div>• POI Click: Show point details</div>
+            </div>
+          </div>
+
+          {/* Tron-style corner decorations */}
+          <div className="absolute top-4 right-4 w-8 h-8 border-t-2 border-r-2 border-cyan-400/60 pointer-events-none"></div>
+          <div className="absolute bottom-4 right-4 w-8 h-8 border-b-2 border-r-2 border-cyan-400/60 pointer-events-none"></div>
         </div>
       </Card>
     </div>
