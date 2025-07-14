@@ -5,7 +5,24 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Search, Loader2, AlertCircle, Layers, MapIcon } from "lucide-react"
+import {
+  Search,
+  Loader2,
+  AlertCircle,
+  Layers,
+  MapIcon,
+  Plus,
+  Minus,
+  Navigation,
+  Building,
+  MapPin,
+  RouteIcon as Road,
+  AlertTriangle,
+  Gauge,
+  Shield,
+  Eye,
+  EyeOff,
+} from "lucide-react"
 
 interface Event {
   id: number
@@ -42,7 +59,10 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
   const [isSearching, setIsSearching] = useState(false)
   const [searchError, setSearchError] = useState<string | null>(null)
   const [mapStyle, setMapStyle] = useState<"2d" | "3d">("2d")
-  const [mapTheme, setMapTheme] = useState<"dark" | "light">("dark")
+  const [mapView, setMapView] = useState<"streets" | "satellite" | "hybrid">("streets")
+  const [selectedTool, setSelectedTool] = useState<string | null>(null)
+  const [buildingsVisible, setBuildingsVisible] = useState(true)
+  const [selectedBuilding, setSelectedBuilding] = useState<any>(null)
   const [mapboxToken, setMapboxToken] = useState<string>("")
   const [mapboxgl, setMapboxgl] = useState<any>(null)
 
@@ -61,6 +81,174 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
     }
     fetchToken()
   }, [])
+
+  const getMapStyle = () => {
+    switch (mapView) {
+      case "satellite":
+        return "mapbox://styles/mapbox/satellite-v9"
+      case "hybrid":
+        return "mapbox://styles/mapbox/satellite-streets-v12"
+      case "streets":
+      default:
+        return mapView === "streets" ? tronDarkStyle : "mapbox://styles/mapbox/light-v11"
+    }
+  }
+
+  const tronDarkStyle = {
+    version: 8,
+    name: "Tron Dark",
+    sprite: "mapbox://sprites/mapbox/dark-v11",
+    glyphs: "mapbox://fonts/mapbox/{fontstack}/{range}.pbf",
+    sources: {
+      "mapbox-streets": {
+        type: "vector",
+        url: "mapbox://mapbox.mapbox-streets-v8",
+      },
+    },
+    layers: [
+      {
+        id: "background",
+        type: "background",
+        paint: {
+          "background-color": "#0a0a0f",
+        },
+      },
+      {
+        id: "water",
+        type: "fill",
+        source: "mapbox-streets",
+        "source-layer": "water",
+        paint: {
+          "fill-color": "#001122",
+          "fill-outline-color": "#00ffff",
+        },
+      },
+      {
+        id: "land",
+        type: "fill",
+        source: "mapbox-streets",
+        "source-layer": "landuse",
+        paint: {
+          "fill-color": "#0f0f1a",
+        },
+      },
+      {
+        id: "road-highway",
+        type: "line",
+        source: "mapbox-streets",
+        "source-layer": "road",
+        filter: ["==", "class", "motorway"],
+        paint: {
+          "line-color": "#00ffff",
+          "line-width": {
+            base: 1.2,
+            stops: [
+              [6, 0.5],
+              [20, 30],
+            ],
+          },
+          "line-opacity": 0.8,
+        },
+      },
+      {
+        id: "road-primary",
+        type: "line",
+        source: "mapbox-streets",
+        "source-layer": "road",
+        filter: ["==", "class", "primary"],
+        paint: {
+          "line-color": "#0099ff",
+          "line-width": {
+            base: 1.2,
+            stops: [
+              [6, 0.5],
+              [20, 20],
+            ],
+          },
+          "line-opacity": 0.7,
+        },
+      },
+      {
+        id: "road-secondary",
+        type: "line",
+        source: "mapbox-streets",
+        "source-layer": "road",
+        filter: ["in", "class", "secondary", "tertiary"],
+        paint: {
+          "line-color": "#0066cc",
+          "line-width": {
+            base: 1.2,
+            stops: [
+              [6, 0.5],
+              [20, 15],
+            ],
+          },
+          "line-opacity": 0.6,
+        },
+      },
+      {
+        id: "road-local",
+        type: "line",
+        source: "mapbox-streets",
+        "source-layer": "road",
+        filter: ["in", "class", "street", "street_limited"],
+        paint: {
+          "line-color": "#003366",
+          "line-width": {
+            base: 1.2,
+            stops: [
+              [6, 0.5],
+              [20, 10],
+            ],
+          },
+          "line-opacity": 0.5,
+        },
+      },
+      {
+        id: "building",
+        type: "fill-extrusion",
+        source: "mapbox-streets",
+        "source-layer": "building",
+        paint: {
+          "fill-extrusion-color": "#1a1a2e",
+          "fill-extrusion-height": ["get", "height"],
+          "fill-extrusion-base": ["get", "min_height"],
+          "fill-extrusion-opacity": buildingsVisible ? 0.8 : 0,
+          "fill-extrusion-vertical-gradient": true,
+        },
+      },
+      {
+        id: "building-highlight",
+        type: "fill-extrusion",
+        source: "mapbox-streets",
+        "source-layer": "building",
+        filter: ["==", ["get", "id"], ""],
+        paint: {
+          "fill-extrusion-color": "#00ffff",
+          "fill-extrusion-height": ["get", "height"],
+          "fill-extrusion-base": ["get", "min_height"],
+          "fill-extrusion-opacity": 0.9,
+        },
+      },
+      {
+        id: "place-labels",
+        type: "symbol",
+        source: "mapbox-streets",
+        "source-layer": "place_label",
+        layout: {
+          "text-field": ["get", "name"],
+          "text-font": ["Open Sans Bold", "Arial Unicode MS Bold"],
+          "text-size": 12,
+          "text-transform": "uppercase",
+        },
+        paint: {
+          "text-color": "#00ffff",
+          "text-halo-color": "#0a0a0f",
+          "text-halo-width": 2,
+        },
+      },
+    ],
+  }
 
   // Initialize map when token is available
   useEffect(() => {
@@ -82,155 +270,11 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
 
         mapboxglLib.accessToken = mapboxToken
 
-        const tronDarkStyle = {
-          version: 8,
-          name: "Tron Dark",
-          sprite: "mapbox://sprites/mapbox/dark-v11",
-          glyphs: "mapbox://fonts/mapbox/{fontstack}/{range}.pbf",
-          sources: {
-            "mapbox-streets": {
-              type: "vector",
-              url: "mapbox://mapbox.mapbox-streets-v8",
-            },
-          },
-          layers: [
-            {
-              id: "background",
-              type: "background",
-              paint: {
-                "background-color": "#0a0a0f",
-              },
-            },
-            {
-              id: "water",
-              type: "fill",
-              source: "mapbox-streets",
-              "source-layer": "water",
-              paint: {
-                "fill-color": "#001122",
-                "fill-outline-color": "#00ffff",
-              },
-            },
-            {
-              id: "land",
-              type: "fill",
-              source: "mapbox-streets",
-              "source-layer": "landuse",
-              paint: {
-                "fill-color": "#0f0f1a",
-              },
-            },
-            {
-              id: "road-highway",
-              type: "line",
-              source: "mapbox-streets",
-              "source-layer": "road",
-              filter: ["==", "class", "motorway"],
-              paint: {
-                "line-color": "#00ffff",
-                "line-width": {
-                  base: 1.2,
-                  stops: [
-                    [6, 0.5],
-                    [20, 30],
-                  ],
-                },
-                "line-opacity": 0.8,
-              },
-            },
-            {
-              id: "road-primary",
-              type: "line",
-              source: "mapbox-streets",
-              "source-layer": "road",
-              filter: ["==", "class", "primary"],
-              paint: {
-                "line-color": "#0099ff",
-                "line-width": {
-                  base: 1.2,
-                  stops: [
-                    [6, 0.5],
-                    [20, 20],
-                  ],
-                },
-                "line-opacity": 0.7,
-              },
-            },
-            {
-              id: "road-secondary",
-              type: "line",
-              source: "mapbox-streets",
-              "source-layer": "road",
-              filter: ["in", "class", "secondary", "tertiary"],
-              paint: {
-                "line-color": "#0066cc",
-                "line-width": {
-                  base: 1.2,
-                  stops: [
-                    [6, 0.5],
-                    [20, 15],
-                  ],
-                },
-                "line-opacity": 0.6,
-              },
-            },
-            {
-              id: "road-local",
-              type: "line",
-              source: "mapbox-streets",
-              "source-layer": "road",
-              filter: ["in", "class", "street", "street_limited"],
-              paint: {
-                "line-color": "#003366",
-                "line-width": {
-                  base: 1.2,
-                  stops: [
-                    [6, 0.5],
-                    [20, 10],
-                  ],
-                },
-                "line-opacity": 0.5,
-              },
-            },
-            {
-              id: "building",
-              type: "fill-extrusion",
-              source: "mapbox-streets",
-              "source-layer": "building",
-              paint: {
-                "fill-extrusion-color": "#1a1a2e",
-                "fill-extrusion-height": ["get", "height"],
-                "fill-extrusion-base": ["get", "min_height"],
-                "fill-extrusion-opacity": 0.8,
-                "fill-extrusion-vertical-gradient": true,
-              },
-            },
-            {
-              id: "place-labels",
-              type: "symbol",
-              source: "mapbox-streets",
-              "source-layer": "place_label",
-              layout: {
-                "text-field": ["get", "name"],
-                "text-font": ["Open Sans Bold", "Arial Unicode MS Bold"],
-                "text-size": 12,
-                "text-transform": "uppercase",
-              },
-              paint: {
-                "text-color": "#00ffff",
-                "text-halo-color": "#0a0a0f",
-                "text-halo-width": 2,
-              },
-            },
-          ],
-        }
-
-        const lightStyle = "mapbox://styles/mapbox/light-v11"
         const initialCenter: [number, number] = userLocation || [-118.2437, 34.0522]
 
         map.current = new mapboxglLib.Map({
           container: mapContainer.current,
-          style: mapTheme === "dark" ? tronDarkStyle : lightStyle,
+          style: getMapStyle(),
           center: initialCenter,
           zoom: userLocation ? 13 : 11,
           pitch: mapStyle === "3d" ? 45 : 0,
@@ -292,6 +336,41 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
             })
           })
 
+          // Add building click handler
+          map.current.on("click", "building", (e: any) => {
+            if (selectedTool === "building") {
+              const building = e.features[0]
+              setSelectedBuilding(building)
+
+              // Highlight selected building
+              map.current.setFilter("building-highlight", ["==", ["get", "id"], building.id || building.properties.id])
+
+              // Show building popup
+              new mapboxglLib.Popup()
+                .setLngLat(e.lngLat)
+                .setHTML(`
+                  <div style="color: #00ffff; background: #0a0a0f; padding: 15px; border-radius: 8px;">
+                    <h3 style="margin: 0 0 8px 0; color: #00ffff;">Building Selected</h3>
+                    <p style="margin: 0 0 4px 0;">Height: ${building.properties.height || "Unknown"}</p>
+                    <p style="margin: 0 0 4px 0;">Type: ${building.properties.type || "Building"}</p>
+                    <p style="margin: 0;">Click elsewhere to deselect</p>
+                  </div>
+                `)
+                .addTo(map.current)
+            }
+          })
+
+          // Change cursor on building hover when building tool is selected
+          map.current.on("mouseenter", "building", () => {
+            if (selectedTool === "building") {
+              map.current.getCanvas().style.cursor = "pointer"
+            }
+          })
+
+          map.current.on("mouseleave", "building", () => {
+            map.current.getCanvas().style.cursor = ""
+          })
+
           setIsLoading(false)
         })
 
@@ -315,7 +394,7 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
         map.current = null
       }
     }
-  }, [mapboxToken, userLocation, events, onEventSelect, mapStyle, mapTheme])
+  }, [mapboxToken, userLocation, events, onEventSelect, mapStyle, mapView, buildingsVisible, selectedTool])
 
   // Update map pitch when 2D/3D changes
   useEffect(() => {
@@ -328,156 +407,12 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
     }
   }, [mapStyle])
 
-  // Update map style when theme changes
+  // Update map style when view changes
   useEffect(() => {
     if (map.current && mapboxgl) {
-      const tronDarkStyle = {
-        version: 8,
-        name: "Tron Dark",
-        sprite: "mapbox://sprites/mapbox/dark-v11",
-        glyphs: "mapbox://fonts/mapbox/{fontstack}/{range}.pbf",
-        sources: {
-          "mapbox-streets": {
-            type: "vector",
-            url: "mapbox://mapbox.mapbox-streets-v8",
-          },
-        },
-        layers: [
-          {
-            id: "background",
-            type: "background",
-            paint: {
-              "background-color": "#0a0a0f",
-            },
-          },
-          {
-            id: "water",
-            type: "fill",
-            source: "mapbox-streets",
-            "source-layer": "water",
-            paint: {
-              "fill-color": "#001122",
-              "fill-outline-color": "#00ffff",
-            },
-          },
-          {
-            id: "land",
-            type: "fill",
-            source: "mapbox-streets",
-            "source-layer": "landuse",
-            paint: {
-              "fill-color": "#0f0f1a",
-            },
-          },
-          {
-            id: "road-highway",
-            type: "line",
-            source: "mapbox-streets",
-            "source-layer": "road",
-            filter: ["==", "class", "motorway"],
-            paint: {
-              "line-color": "#00ffff",
-              "line-width": {
-                base: 1.2,
-                stops: [
-                  [6, 0.5],
-                  [20, 30],
-                ],
-              },
-              "line-opacity": 0.8,
-            },
-          },
-          {
-            id: "road-primary",
-            type: "line",
-            source: "mapbox-streets",
-            "source-layer": "road",
-            filter: ["==", "class", "primary"],
-            paint: {
-              "line-color": "#0099ff",
-              "line-width": {
-                base: 1.2,
-                stops: [
-                  [6, 0.5],
-                  [20, 20],
-                ],
-              },
-              "line-opacity": 0.7,
-            },
-          },
-          {
-            id: "road-secondary",
-            type: "line",
-            source: "mapbox-streets",
-            "source-layer": "road",
-            filter: ["in", "class", "secondary", "tertiary"],
-            paint: {
-              "line-color": "#0066cc",
-              "line-width": {
-                base: 1.2,
-                stops: [
-                  [6, 0.5],
-                  [20, 15],
-                ],
-              },
-              "line-opacity": 0.6,
-            },
-          },
-          {
-            id: "road-local",
-            type: "line",
-            source: "mapbox-streets",
-            "source-layer": "road",
-            filter: ["in", "class", "street", "street_limited"],
-            paint: {
-              "line-color": "#003366",
-              "line-width": {
-                base: 1.2,
-                stops: [
-                  [6, 0.5],
-                  [20, 10],
-                ],
-              },
-              "line-opacity": 0.5,
-            },
-          },
-          {
-            id: "building",
-            type: "fill-extrusion",
-            source: "mapbox-streets",
-            "source-layer": "building",
-            paint: {
-              "fill-extrusion-color": "#1a1a2e",
-              "fill-extrusion-height": ["get", "height"],
-              "fill-extrusion-base": ["get", "min_height"],
-              "fill-extrusion-opacity": 0.8,
-              "fill-extrusion-vertical-gradient": true,
-            },
-          },
-          {
-            id: "place-labels",
-            type: "symbol",
-            source: "mapbox-streets",
-            "source-layer": "place_label",
-            layout: {
-              "text-field": ["get", "name"],
-              "text-font": ["Open Sans Bold", "Arial Unicode MS Bold"],
-              "text-size": 12,
-              "text-transform": "uppercase",
-            },
-            paint: {
-              "text-color": "#00ffff",
-              "text-halo-color": "#0a0a0f",
-              "text-halo-width": 2,
-            },
-          },
-        ],
-      }
-
-      const newStyle = mapTheme === "dark" ? tronDarkStyle : "mapbox://styles/mapbox/light-v11"
-      map.current.setStyle(newStyle)
+      map.current.setStyle(getMapStyle())
     }
-  }, [mapTheme, mapboxgl])
+  }, [mapView, mapboxgl])
 
   const runSearch = useCallback(
     async (query: string) => {
@@ -530,6 +465,41 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
     setSearchError(null)
   }
 
+  const zoomIn = () => {
+    if (map.current) {
+      map.current.zoomIn()
+    }
+  }
+
+  const zoomOut = () => {
+    if (map.current) {
+      map.current.zoomOut()
+    }
+  }
+
+  const resetBearing = () => {
+    if (map.current) {
+      map.current.easeTo({ bearing: 0, pitch: mapStyle === "3d" ? 45 : 0 })
+    }
+  }
+
+  const toggleBuildings = () => {
+    setBuildingsVisible(!buildingsVisible)
+    if (map.current) {
+      map.current.setPaintProperty("building", "fill-extrusion-opacity", buildingsVisible ? 0 : 0.8)
+    }
+  }
+
+  const selectTool = (tool: string) => {
+    setSelectedTool(selectedTool === tool ? null : tool)
+    if (selectedBuilding && tool !== "building") {
+      setSelectedBuilding(null)
+      if (map.current) {
+        map.current.setFilter("building-highlight", ["==", ["get", "id"], ""])
+      }
+    }
+  }
+
   if (loadError) {
     return (
       <Card className="bg-red-900 border-red-700">
@@ -578,8 +548,50 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
               )}
             </div>
 
-            {/* Map Controls */}
+            {/* Map View Controls */}
             <div className="flex gap-2 flex-wrap">
+              <div className="flex gap-1">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={mapView === "streets" ? "default" : "outline"}
+                  onClick={() => setMapView("streets")}
+                  className={
+                    mapView === "streets"
+                      ? "bg-cyan-600 hover:bg-cyan-500 text-gray-900"
+                      : "border-cyan-500/30 bg-transparent text-cyan-300 hover:bg-cyan-500/10"
+                  }
+                >
+                  Streets
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={mapView === "satellite" ? "default" : "outline"}
+                  onClick={() => setMapView("satellite")}
+                  className={
+                    mapView === "satellite"
+                      ? "bg-cyan-600 hover:bg-cyan-500 text-gray-900"
+                      : "border-cyan-500/30 bg-transparent text-cyan-300 hover:bg-cyan-500/10"
+                  }
+                >
+                  Satellite
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={mapView === "hybrid" ? "default" : "outline"}
+                  onClick={() => setMapView("hybrid")}
+                  className={
+                    mapView === "hybrid"
+                      ? "bg-cyan-600 hover:bg-cyan-500 text-gray-900"
+                      : "border-cyan-500/30 bg-transparent text-cyan-300 hover:bg-cyan-500/10"
+                  }
+                >
+                  Hybrid
+                </Button>
+              </div>
+
               <div className="flex gap-1">
                 <Button
                   type="button"
@@ -610,34 +622,99 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
                   3D
                 </Button>
               </div>
-              <div className="flex gap-1">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={mapTheme === "dark" ? "default" : "outline"}
-                  onClick={() => setMapTheme("dark")}
-                  className={
-                    mapTheme === "dark"
-                      ? "bg-gray-700 hover:bg-gray-600 text-cyan-300"
-                      : "border-cyan-500/30 bg-transparent text-cyan-300 hover:bg-cyan-500/10"
-                  }
-                >
-                  Dark
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={mapTheme === "light" ? "default" : "outline"}
-                  onClick={() => setMapTheme("light")}
-                  className={
-                    mapTheme === "light"
-                      ? "bg-gray-700 hover:bg-gray-600 text-cyan-300"
-                      : "border-cyan-500/30 bg-transparent text-cyan-300 hover:bg-cyan-500/10"
-                  }
-                >
-                  Light
-                </Button>
-              </div>
+            </div>
+
+            {/* Interaction Tools */}
+            <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant={selectedTool === "address" ? "default" : "outline"}
+                onClick={() => selectTool("address")}
+                className={`flex flex-col items-center p-3 h-auto ${
+                  selectedTool === "address"
+                    ? "bg-blue-600 hover:bg-blue-500 text-white"
+                    : "border-cyan-500/30 bg-transparent text-cyan-300 hover:bg-cyan-500/10"
+                }`}
+              >
+                <MapPin className="w-5 h-5 mb-1" />
+                <span className="text-xs">Address</span>
+              </Button>
+
+              <Button
+                type="button"
+                size="sm"
+                variant={selectedTool === "building" ? "default" : "outline"}
+                onClick={() => selectTool("building")}
+                className={`flex flex-col items-center p-3 h-auto ${
+                  selectedTool === "building"
+                    ? "bg-green-600 hover:bg-green-500 text-white"
+                    : "border-cyan-500/30 bg-transparent text-cyan-300 hover:bg-cyan-500/10"
+                }`}
+              >
+                <Building className="w-5 h-5 mb-1" />
+                <span className="text-xs">Building</span>
+              </Button>
+
+              <Button
+                type="button"
+                size="sm"
+                variant={selectedTool === "road" ? "default" : "outline"}
+                onClick={() => selectTool("road")}
+                className={`flex flex-col items-center p-3 h-auto ${
+                  selectedTool === "road"
+                    ? "bg-orange-600 hover:bg-orange-500 text-white"
+                    : "border-cyan-500/30 bg-transparent text-cyan-300 hover:bg-cyan-500/10"
+                }`}
+              >
+                <Road className="w-5 h-5 mb-1" />
+                <span className="text-xs">Road</span>
+              </Button>
+
+              <Button
+                type="button"
+                size="sm"
+                variant={selectedTool === "speed" ? "default" : "outline"}
+                onClick={() => selectTool("speed")}
+                className={`flex flex-col items-center p-3 h-auto ${
+                  selectedTool === "speed"
+                    ? "bg-red-600 hover:bg-red-500 text-white"
+                    : "border-cyan-500/30 bg-transparent text-cyan-300 hover:bg-cyan-500/10"
+                }`}
+              >
+                <Gauge className="w-5 h-5 mb-1" />
+                <span className="text-xs">Speed</span>
+              </Button>
+
+              <Button
+                type="button"
+                size="sm"
+                variant={selectedTool === "incident" ? "default" : "outline"}
+                onClick={() => selectTool("incident")}
+                className={`flex flex-col items-center p-3 h-auto ${
+                  selectedTool === "incident"
+                    ? "bg-yellow-600 hover:bg-yellow-500 text-white"
+                    : "border-cyan-500/30 bg-transparent text-cyan-300 hover:bg-cyan-500/10"
+                }`}
+              >
+                <AlertTriangle className="w-5 h-5 mb-1" />
+                <span className="text-xs">Incident</span>
+              </Button>
+
+              <Button
+                type="button"
+                size="sm"
+                variant={selectedTool === "clearance" ? "default" : "outline"}
+                onClick={() => selectTool("clearance")}
+                className={`flex flex-col items-center p-3 h-auto ${
+                  selectedTool === "clearance"
+                    ? "bg-purple-600 hover:bg-purple-500 text-white"
+                    : "border-cyan-500/30 bg-transparent text-cyan-300 hover:bg-cyan-500/10"
+                }`}
+              >
+                <Shield className="w-5 h-5 mb-1" />
+                <span className="text-xs">Clearance</span>
+              </Button>
             </div>
 
             {/* Search Error */}
@@ -654,6 +731,19 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
                 Found {searchResults.length} result{searchResults.length !== 1 ? "s" : ""}
               </div>
             )}
+
+            {/* Selected Tool Info */}
+            {selectedTool && (
+              <div className="text-sm text-cyan-400 bg-cyan-500/10 p-2 rounded">
+                <strong>{selectedTool.charAt(0).toUpperCase() + selectedTool.slice(1)} Tool Active:</strong>{" "}
+                {selectedTool === "building" && "Click on buildings to select and view details"}
+                {selectedTool === "address" && "Click on the map to get address information"}
+                {selectedTool === "road" && "Click on roads to view road information"}
+                {selectedTool === "speed" && "Click to view speed limit information"}
+                {selectedTool === "incident" && "Click to report or view incidents"}
+                {selectedTool === "clearance" && "Click to view clearance information"}
+              </div>
+            )}
           </form>
         </div>
       </Card>
@@ -667,10 +757,42 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
             <div className="absolute inset-0 bg-gray-900/90 flex items-center justify-center backdrop-blur-sm">
               <div className="text-center">
                 <Loader2 className="w-8 h-8 animate-spin mx-auto mb-2 text-cyan-400" />
-                <p className="text-cyan-300">Loading tron map interface...</p>
+                <p className="text-cyan-300">Loading enhanced map interface...</p>
               </div>
             </div>
           )}
+
+          {/* Map Controls - Right Side */}
+          <div className="absolute top-4 right-4 flex flex-col gap-2">
+            <Button
+              onClick={resetBearing}
+              size="sm"
+              className="bg-gray-900/90 hover:bg-gray-800 text-cyan-300 border border-cyan-500/30 backdrop-blur-sm"
+            >
+              <Navigation className="w-4 h-4" />
+            </Button>
+            <Button
+              onClick={zoomIn}
+              size="sm"
+              className="bg-gray-900/90 hover:bg-gray-800 text-cyan-300 border border-cyan-500/30 backdrop-blur-sm"
+            >
+              <Plus className="w-4 h-4" />
+            </Button>
+            <Button
+              onClick={zoomOut}
+              size="sm"
+              className="bg-gray-900/90 hover:bg-gray-800 text-cyan-300 border border-cyan-500/30 backdrop-blur-sm"
+            >
+              <Minus className="w-4 h-4" />
+            </Button>
+            <Button
+              onClick={toggleBuildings}
+              size="sm"
+              className="bg-gray-900/90 hover:bg-gray-800 text-cyan-300 border border-cyan-500/30 backdrop-blur-sm"
+            >
+              {buildingsVisible ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            </Button>
+          </div>
 
           {/* Map Legend */}
           <div className="absolute bottom-4 left-4 bg-gray-900/90 backdrop-blur-sm rounded-lg p-3 border border-cyan-500/30">
@@ -694,13 +816,19 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
                   <span className="text-cyan-300">Your Location</span>
                 </div>
               )}
+              {selectedBuilding && (
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 bg-cyan-400 rounded shadow-lg shadow-cyan-400/50"></div>
+                  <span className="text-cyan-300">Selected Building</span>
+                </div>
+              )}
             </div>
           </div>
 
           {/* Tron-style corner decorations */}
-          <div className="absolute top-4 right-4 w-8 h-8 border-t-2 border-r-2 border-cyan-400/60"></div>
-          <div className="absolute top-4 left-4 w-8 h-8 border-t-2 border-l-2 border-cyan-400/60"></div>
-          <div className="absolute bottom-4 right-4 w-8 h-8 border-b-2 border-r-2 border-cyan-400/60"></div>
+          <div className="absolute top-4 right-4 w-8 h-8 border-t-2 border-r-2 border-cyan-400/60 pointer-events-none"></div>
+          <div className="absolute top-4 left-4 w-8 h-8 border-t-2 border-l-2 border-cyan-400/60 pointer-events-none"></div>
+          <div className="absolute bottom-4 right-4 w-8 h-8 border-b-2 border-r-2 border-cyan-400/60 pointer-events-none"></div>
         </div>
       </Card>
     </div>
