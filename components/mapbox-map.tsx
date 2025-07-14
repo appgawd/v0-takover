@@ -62,9 +62,16 @@ const safeSetFilter = (mp: any, layerId: string, filter: any) => {
   }
 }
 
+const safeAddLayer = (mp: any, layer: any) => {
+  if (mp && !mp.getLayer(layer.id)) {
+    mp.addLayer(layer)
+  }
+}
+
 export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProps) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<any>(null)
+  const clickTimeout = useRef<NodeJS.Timeout | null>(null)
 
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState<string>("")
@@ -76,7 +83,8 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
   const [mapView, setMapView] = useState<"streets" | "satellite" | "hybrid">("streets")
   const [selectedTool, setSelectedTool] = useState<string | null>(null)
   const [buildingsVisible, setBuildingsVisible] = useState(true)
-  const [selectedBuilding, setSelectedBuilding] = useState<any>(null)
+  const [selectedBuildings, setSelectedBuildings] = useState<Set<string>>(new Set())
+  const [hoveredFeature, setHoveredFeature] = useState<any>(null)
   const [mapboxToken, setMapboxToken] = useState<string>("")
   const [mapboxgl, setMapboxgl] = useState<any>(null)
 
@@ -232,16 +240,47 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
         },
       },
       {
-        id: "building-highlight",
+        id: "building-hover",
         type: "fill-extrusion",
         source: "mapbox-streets",
         "source-layer": "building",
         filter: ["==", ["get", "id"], ""],
         paint: {
+          "fill-extrusion-color": "#ffff00",
+          "fill-extrusion-height": ["get", "height"],
+          "fill-extrusion-base": ["get", "min_height"],
+          "fill-extrusion-opacity": 0.7,
+        },
+      },
+      {
+        id: "building-selected",
+        type: "fill-extrusion",
+        source: "mapbox-streets",
+        "source-layer": "building",
+        filter: ["in", ["get", "id"]],
+        paint: {
           "fill-extrusion-color": "#00ffff",
           "fill-extrusion-height": ["get", "height"],
           "fill-extrusion-base": ["get", "min_height"],
           "fill-extrusion-opacity": 0.9,
+        },
+      },
+      {
+        id: "road-hover",
+        type: "line",
+        source: "mapbox-streets",
+        "source-layer": "road",
+        filter: ["==", ["get", "id"], ""],
+        paint: {
+          "line-color": "#ffff00",
+          "line-width": {
+            base: 1.2,
+            stops: [
+              [6, 2],
+              [20, 40],
+            ],
+          },
+          "line-opacity": 0.8,
         },
       },
       {
@@ -261,7 +300,101 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
           "text-halo-width": 2,
         },
       },
+      {
+        id: "poi-labels",
+        type: "symbol",
+        source: "mapbox-streets",
+        "source-layer": "poi_label",
+        layout: {
+          "text-field": ["get", "name"],
+          "text-font": ["Open Sans Regular", "Arial Unicode MS Regular"],
+          "text-size": 10,
+          "icon-image": ["get", "maki"],
+          "icon-size": 0.8,
+          "text-anchor": "top",
+          "text-offset": [0, 0.8],
+        },
+        paint: {
+          "text-color": "#00ccff",
+          "text-halo-color": "#0a0a0f",
+          "text-halo-width": 1,
+          "icon-opacity": 0.8,
+        },
+      },
     ],
+  }
+
+  const addInteractionLayers = () => {
+    if (!map.current) return
+
+    // Add hover layers for different map styles
+    if (mapView === "streets") {
+      // Tron style already has the layers defined
+      return
+    }
+
+    // For satellite and hybrid views, add interaction layers
+    const buildingHoverLayer = {
+      id: "building-hover",
+      type: "fill-extrusion",
+      source: "composite",
+      "source-layer": "building",
+      filter: ["==", ["get", "id"], ""],
+      paint: {
+        "fill-extrusion-color": "#ffff00",
+        "fill-extrusion-height": ["case", ["has", "height"], ["get", "height"], 10],
+        "fill-extrusion-base": ["case", ["has", "min_height"], ["get", "min_height"], 0],
+        "fill-extrusion-opacity": 0.7,
+      },
+    }
+
+    const buildingSelectedLayer = {
+      id: "building-selected",
+      type: "fill-extrusion",
+      source: "composite",
+      "source-layer": "building",
+      filter: ["in", ["get", "id"]],
+      paint: {
+        "fill-extrusion-color": "#00ffff",
+        "fill-extrusion-height": ["case", ["has", "height"], ["get", "height"], 10],
+        "fill-extrusion-base": ["case", ["has", "min_height"], ["get", "min_height"], 0],
+        "fill-extrusion-opacity": 0.9,
+      },
+    }
+
+    const roadHoverLayer = {
+      id: "road-hover",
+      type: "line",
+      source: "composite",
+      "source-layer": "road",
+      filter: ["==", ["get", "id"], ""],
+      paint: {
+        "line-color": "#ffff00",
+        "line-width": {
+          base: 1.2,
+          stops: [
+            [6, 2],
+            [20, 40],
+          ],
+        },
+        "line-opacity": 0.8,
+      },
+    }
+
+    safeAddLayer(map.current, buildingHoverLayer)
+    safeAddLayer(map.current, buildingSelectedLayer)
+    safeAddLayer(map.current, roadHoverLayer)
+  }
+
+  const updateSelectedBuildingsFilter = () => {
+    if (!map.current) return
+
+    const selectedArray = Array.from(selectedBuildings)
+    if (selectedArray.length > 0) {
+      safeSetFilter(map.current, "building-selected", ["in", ["get", "id"], ["literal", selectedArray]])
+    } else {
+      safeSetFilter(map.current, "building-selected", ["in", ["get", "id"]])
+    }
   }
 
   // Initialize map when token is available
@@ -297,6 +430,8 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
         })
 
         map.current.on("load", () => {
+          addInteractionLayers()
+
           // Add user location marker
           if (userLocation) {
             const userMarker = new mapboxglLib.Marker({
@@ -350,43 +485,167 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
             })
           })
 
-          // Add building click handler
-          map.current.on("click", "building", (e: any) => {
-            if (selectedTool === "building") {
-              const building = e.features[0]
-              setSelectedBuilding(building)
+          // Building hover effects
+          map.current.on("mouseenter", "building", (e: any) => {
+            map.current.getCanvas().style.cursor = "pointer"
+            const feature = e.features[0]
+            const featureId = feature.id || feature.properties.id || `${feature.properties.osm_id || Math.random()}`
 
-              // Highlight selected building
-              safeSetFilter(map.current, "building-highlight", [
-                "==",
-                ["get", "id"],
-                building.id || building.properties.id,
-              ])
-
-              // Show building popup
-              new mapboxglLib.Popup()
-                .setLngLat(e.lngLat)
-                .setHTML(`
-                  <div style="color: #00ffff; background: #0a0a0f; padding: 15px; border-radius: 8px;">
-                    <h3 style="margin: 0 0 8px 0; color: #00ffff;">Building Selected</h3>
-                    <p style="margin: 0 0 4px 0;">Height: ${building.properties.height || "Unknown"}</p>
-                    <p style="margin: 0 0 4px 0;">Type: ${building.properties.type || "Building"}</p>
-                    <p style="margin: 0;">Click elsewhere to deselect</p>
-                  </div>
-                `)
-                .addTo(map.current)
-            }
-          })
-
-          // Change cursor on building hover when building tool is selected
-          map.current.on("mouseenter", "building", () => {
-            if (selectedTool === "building") {
-              map.current.getCanvas().style.cursor = "pointer"
-            }
+            setHoveredFeature(feature)
+            safeSetFilter(map.current, "building-hover", ["==", ["get", "id"], featureId])
           })
 
           map.current.on("mouseleave", "building", () => {
             map.current.getCanvas().style.cursor = ""
+            setHoveredFeature(null)
+            safeSetFilter(map.current, "building-hover", ["==", ["get", "id"], ""])
+          })
+
+          // Road hover effects
+          map.current.on("mouseenter", "road", (e: any) => {
+            map.current.getCanvas().style.cursor = "pointer"
+            const feature = e.features[0]
+            const featureId = feature.id || feature.properties.id || `${feature.properties.osm_id || Math.random()}`
+
+            setHoveredFeature(feature)
+            safeSetFilter(map.current, "road-hover", ["==", ["get", "id"], featureId])
+          })
+
+          map.current.on("mouseleave", "road", () => {
+            map.current.getCanvas().style.cursor = ""
+            setHoveredFeature(null)
+            safeSetFilter(map.current, "road-hover", ["==", ["get", "id"], ""])
+          })
+
+          // POI hover effects
+          map.current.on("mouseenter", "poi-labels", (e: any) => {
+            map.current.getCanvas().style.cursor = "pointer"
+            setHoveredFeature(e.features[0])
+          })
+
+          map.current.on("mouseleave", "poi-labels", () => {
+            map.current.getCanvas().style.cursor = ""
+            setHoveredFeature(null)
+          })
+
+          // Building click handlers
+          map.current.on("click", "building", (e: any) => {
+            const feature = e.features[0]
+            const featureId = feature.id || feature.properties.id || `${feature.properties.osm_id || Math.random()}`
+
+            if (clickTimeout.current) {
+              clearTimeout(clickTimeout.current)
+              clickTimeout.current = null
+
+              // Double click - show detailed info
+              new mapboxglLib.Popup()
+                .setLngLat(e.lngLat)
+                .setHTML(`
+                  <div style="color: #00ffff; background: #0a0a0f; padding: 15px; border-radius: 8px; max-width: 300px;">
+                    <h3 style="margin: 0 0 8px 0; color: #00ffff;">🏢 Building Details</h3>
+                    <div style="margin-bottom: 8px;">
+                      <strong>Height:</strong> ${feature.properties.height || "Unknown"}
+                    </div>
+                    <div style="margin-bottom: 8px;">
+                      <strong>Type:</strong> ${feature.properties.type || "Building"}
+                    </div>
+                    <div style="margin-bottom: 8px;">
+                      <strong>Levels:</strong> ${feature.properties.levels || "Unknown"}
+                    </div>
+                    <div style="margin-bottom: 8px;">
+                      <strong>Address:</strong> ${feature.properties.address || "Not available"}
+                    </div>
+                    <div style="margin-bottom: 8px;">
+                      <strong>ID:</strong> ${featureId}
+                    </div>
+                    <div style="font-size: 12px; color: #888; margin-top: 10px;">
+                      Double-click to view details • Single-click to toggle selection
+                    </div>
+                  </div>
+                `)
+                .addTo(map.current)
+            } else {
+              // Single click - toggle selection
+              clickTimeout.current = setTimeout(() => {
+                setSelectedBuildings((prev) => {
+                  const newSet = new Set(prev)
+                  if (newSet.has(featureId)) {
+                    newSet.delete(featureId)
+                  } else {
+                    newSet.add(featureId)
+                  }
+                  return newSet
+                })
+                clickTimeout.current = null
+              }, 300)
+            }
+          })
+
+          // Road click handlers
+          map.current.on("click", "road", (e: any) => {
+            const feature = e.features[0]
+
+            if (clickTimeout.current) {
+              clearTimeout(clickTimeout.current)
+              clickTimeout.current = null
+
+              // Double click - show detailed info
+              new mapboxglLib.Popup()
+                .setLngLat(e.lngLat)
+                .setHTML(`
+                  <div style="color: #00ffff; background: #0a0a0f; padding: 15px; border-radius: 8px; max-width: 300px;">
+                    <h3 style="margin: 0 0 8px 0; color: #00ffff;">🛣️ Road Details</h3>
+                    <div style="margin-bottom: 8px;">
+                      <strong>Name:</strong> ${feature.properties.name || "Unnamed Road"}
+                    </div>
+                    <div style="margin-bottom: 8px;">
+                      <strong>Class:</strong> ${feature.properties.class || "Unknown"}
+                    </div>
+                    <div style="margin-bottom: 8px;">
+                      <strong>Type:</strong> ${feature.properties.type || "Road"}
+                    </div>
+                    <div style="margin-bottom: 8px;">
+                      <strong>Surface:</strong> ${feature.properties.surface || "Unknown"}
+                    </div>
+                    <div style="margin-bottom: 8px;">
+                      <strong>Max Speed:</strong> ${feature.properties.maxspeed || "Unknown"}
+                    </div>
+                    <div style="font-size: 12px; color: #888; margin-top: 10px;">
+                      Double-click to view details • Hover to highlight
+                    </div>
+                  </div>
+                `)
+                .addTo(map.current)
+            } else {
+              clickTimeout.current = setTimeout(() => {
+                clickTimeout.current = null
+              }, 300)
+            }
+          })
+
+          // POI click handlers
+          map.current.on("click", "poi-labels", (e: any) => {
+            const feature = e.features[0]
+
+            new mapboxglLib.Popup()
+              .setLngLat(e.lngLat)
+              .setHTML(`
+                <div style="color: #00ffff; background: #0a0a0f; padding: 15px; border-radius: 8px; max-width: 300px;">
+                  <h3 style="margin: 0 0 8px 0; color: #00ffff;">📍 ${feature.properties.name || "Point of Interest"}</h3>
+                  <div style="margin-bottom: 8px;">
+                    <strong>Category:</strong> ${feature.properties.class || "Unknown"}
+                  </div>
+                  <div style="margin-bottom: 8px;">
+                    <strong>Type:</strong> ${feature.properties.type || "POI"}
+                  </div>
+                  ${feature.properties.address ? `<div style="margin-bottom: 8px;"><strong>Address:</strong> ${feature.properties.address}</div>` : ""}
+                  ${feature.properties.phone ? `<div style="margin-bottom: 8px;"><strong>Phone:</strong> ${feature.properties.phone}</div>` : ""}
+                  <div style="font-size: 12px; color: #888; margin-top: 10px;">
+                    Point of Interest
+                  </div>
+                </div>
+              `)
+              .addTo(map.current)
           })
 
           setIsLoading(false)
@@ -407,12 +666,20 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
     initializeMap()
 
     return () => {
+      if (clickTimeout.current) {
+        clearTimeout(clickTimeout.current)
+      }
       if (map.current) {
         map.current.remove()
         map.current = null
       }
     }
   }, [mapboxToken, userLocation, events, onEventSelect, mapStyle, mapView, buildingsVisible, selectedTool])
+
+  // Update selected buildings filter when selection changes
+  useEffect(() => {
+    updateSelectedBuildingsFilter()
+  }, [selectedBuildings])
 
   // Update map pitch when 2D/3D changes
   useEffect(() => {
@@ -433,22 +700,8 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
     map.current.setStyle(styleUrl)
 
     map.current.once("style.load", () => {
-      //  Add highlight layer back in Tron style only
-      if (styleUrl === tronDarkStyle && !map.current.getLayer("building-highlight")) {
-        map.current.addLayer({
-          id: "building-highlight",
-          type: "fill-extrusion",
-          source: "mapbox-streets",
-          "source-layer": "building",
-          filter: ["==", ["get", "id"], ""],
-          paint: {
-            "fill-extrusion-color": "#00ffff",
-            "fill-extrusion-height": ["get", "height"],
-            "fill-extrusion-base": ["get", "min_height"],
-            "fill-extrusion-opacity": 0.9,
-          },
-        })
-      }
+      addInteractionLayers()
+      updateSelectedBuildingsFilter()
     })
   }, [mapView, mapboxgl])
 
@@ -531,10 +784,10 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
 
   const selectTool = (tool: string) => {
     setSelectedTool(selectedTool === tool ? null : tool)
-    if (selectedBuilding && tool !== "building") {
-      setSelectedBuilding(null)
-      safeSetFilter(map.current, "building-highlight", ["==", ["get", "id"], ""])
-    }
+  }
+
+  const clearSelectedBuildings = () => {
+    setSelectedBuildings(new Set())
   }
 
   if (loadError) {
@@ -659,6 +912,18 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
                   3D
                 </Button>
               </div>
+
+              {selectedBuildings.size > 0 && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={clearSelectedBuildings}
+                  className="border-red-500/30 text-red-300 bg-transparent hover:bg-red-500/10"
+                >
+                  Clear Selected ({selectedBuildings.size})
+                </Button>
+              )}
             </div>
 
             {/* Interaction Tools */}
@@ -769,13 +1034,26 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
               </div>
             )}
 
+            {/* Hover Info */}
+            {hoveredFeature && (
+              <div className="text-sm text-yellow-400 bg-yellow-500/10 p-2 rounded">
+                <strong>Hovering:</strong>{" "}
+                {hoveredFeature.properties.name ||
+                  hoveredFeature.properties.class ||
+                  hoveredFeature.properties.type ||
+                  "Feature"}
+                {hoveredFeature.source === "building" && " (Building)"}
+                {hoveredFeature.source === "road" && " (Road)"}
+              </div>
+            )}
+
             {/* Selected Tool Info */}
             {selectedTool && (
               <div className="text-sm text-cyan-400 bg-cyan-500/10 p-2 rounded">
                 <strong>{selectedTool.charAt(0).toUpperCase() + selectedTool.slice(1)} Tool Active:</strong>{" "}
-                {selectedTool === "building" && "Click on buildings to select and view details"}
+                {selectedTool === "building" && "Hover to highlight • Click to select • Double-click for details"}
                 {selectedTool === "address" && "Click on the map to get address information"}
-                {selectedTool === "road" && "Click on roads to view road information"}
+                {selectedTool === "road" && "Hover to highlight • Double-click for road details"}
                 {selectedTool === "speed" && "Click to view speed limit information"}
                 {selectedTool === "incident" && "Click to report or view incidents"}
                 {selectedTool === "clearance" && "Click to view clearance information"}
@@ -853,18 +1131,30 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
                   <span className="text-cyan-300">Your Location</span>
                 </div>
               )}
-              {selectedBuilding && (
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 bg-cyan-400 rounded shadow-lg shadow-cyan-400/50"></div>
-                  <span className="text-cyan-300">Selected Building</span>
-                </div>
-              )}
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 bg-yellow-400 rounded shadow-lg shadow-yellow-400/50"></div>
+                <span className="text-yellow-300">Hover Highlight</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 bg-cyan-400 rounded shadow-lg shadow-cyan-400/50"></div>
+                <span className="text-cyan-300">Selected ({selectedBuildings.size})</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Interaction Instructions */}
+          <div className="absolute top-4 left-4 bg-gray-900/90 backdrop-blur-sm rounded-lg p-3 border border-cyan-500/30 max-w-xs">
+            <div className="text-xs font-semibold mb-2 text-cyan-400 uppercase tracking-wider">Interactions</div>
+            <div className="space-y-1 text-xs text-cyan-300">
+              <div>• Hover: Highlight buildings/roads</div>
+              <div>• Single Click: Toggle building selection</div>
+              <div>• Double Click: View detailed info</div>
+              <div>• POI Click: Show point details</div>
             </div>
           </div>
 
           {/* Tron-style corner decorations */}
           <div className="absolute top-4 right-4 w-8 h-8 border-t-2 border-r-2 border-cyan-400/60 pointer-events-none"></div>
-          <div className="absolute top-4 left-4 w-8 h-8 border-t-2 border-l-2 border-cyan-400/60 pointer-events-none"></div>
           <div className="absolute bottom-4 right-4 w-8 h-8 border-b-2 border-r-2 border-cyan-400/60 pointer-events-none"></div>
         </div>
       </Card>
