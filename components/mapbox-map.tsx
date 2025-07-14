@@ -11,17 +11,12 @@ import {
   AlertCircle,
   Layers,
   MapIcon,
-  Plus,
-  Minus,
-  Navigation,
   Building,
   MapPin,
   RouteIcon as Road,
   AlertTriangle,
   Gauge,
   Shield,
-  Eye,
-  EyeOff,
 } from "lucide-react"
 
 interface Event {
@@ -83,10 +78,10 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
   const [mapView, setMapView] = useState<"streets" | "satellite" | "hybrid">("streets")
   const [selectedTool, setSelectedTool] = useState<string | null>(null)
   const [buildingsVisible, setBuildingsVisible] = useState(true)
-  const [selectedBuildings, setSelectedBuildings] = useState<Set<string>>(new Set())
+  const [selectedBuildings, setSelectedBuildings] = useState<string[]>([])
   const [hoveredFeature, setHoveredFeature] = useState<any>(null)
   const [mapboxToken, setMapboxToken] = useState<string>("")
-  const [mapboxgl, setMapboxgl] = useState<any>(null)
+  const mapboxglRef = useRef<any>(null)
 
   // Fetch token from server
   useEffect(() => {
@@ -412,7 +407,7 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
   const updateSelectedBuildingsFilter = () => {
     if (!map.current) return
 
-    const selectedArray = Array.from(selectedBuildings)
+    const selectedArray = selectedBuildings
     if (selectedArray.length > 0) {
       safeSetFilter(map.current, "building-selected", ["in", ["get", "id"], ["literal", selectedArray]])
     } else {
@@ -429,7 +424,7 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
     const initializeMap = async () => {
       try {
         const { default: mapboxglLib } = await import("mapbox-gl")
-        setMapboxgl(mapboxglLib)
+        mapboxglRef.current = mapboxglLib
 
         if (!document.querySelector('link[href*="mapbox-gl.css"]')) {
           const link = document.createElement("link")
@@ -438,11 +433,11 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
           document.head.appendChild(link)
         }
 
-        mapboxglLib.accessToken = mapboxToken
+        mapboxglRef.current.accessToken = mapboxToken
 
         const initialCenter: [number, number] = userLocation || [-118.2437, 34.0522]
 
-        map.current = new mapboxglLib.Map({
+        map.current = new mapboxglRef.current.Map({
           container: mapContainer.current,
           style: getMapStyle(),
           center: initialCenter,
@@ -457,13 +452,13 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
 
           // Add user location marker
           if (userLocation) {
-            const userMarker = new mapboxglLib.Marker({
+            const userMarker = new mapboxglRef.current.Marker({
               color: "#00ffff",
               scale: 1.2,
             })
               .setLngLat(userLocation)
               .setPopup(
-                new mapboxglLib.Popup().setHTML(`
+                new mapboxglRef.current.Popup().setHTML(`
               <div style="color: #00ffff; background: #0a0a0f; padding: 10px; border-radius: 8px;">
                 <strong>📍 Your Location</strong><br>
                 <small>${userLocation[1].toFixed(4)}, ${userLocation[0].toFixed(4)}</small>
@@ -477,13 +472,13 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
           events.forEach((event) => {
             const color = event.status === "live" ? "#00ff00" : event.status === "upcoming" ? "#0099ff" : "#ff6600"
 
-            const marker = new mapboxglLib.Marker({
+            const marker = new mapboxglRef.current.Marker({
               color: color,
               scale: 1.5,
             })
               .setLngLat(event.coordinates)
               .setPopup(
-                new mapboxglLib.Popup().setHTML(`
+                new mapboxglRef.current.Popup().setHTML(`
               <div style="color: #00ffff; background: #0a0a0f; padding: 15px; border-radius: 8px; min-width: 200px;">
                 <h3 style="margin: 0 0 8px 0; color: ${color};">${event.name}</h3>
                 <p style="margin: 0 0 4px 0;">📍 ${event.location}</p>
@@ -561,7 +556,7 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
               clickTimeout.current = null
 
               // Double click - show detailed info
-              new mapboxglLib.Popup()
+              new mapboxglRef.current.Popup()
                 .setLngLat(e.lngLat)
                 .setHTML(`
                 <div style="color: #00ffff; background: #0a0a0f; padding: 15px; border-radius: 8px; max-width: 300px;">
@@ -590,15 +585,9 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
             } else {
               // Single click - toggle selection
               clickTimeout.current = setTimeout(() => {
-                setSelectedBuildings((prev) => {
-                  const newSet = new Set(prev)
-                  if (newSet.has(featureId)) {
-                    newSet.delete(featureId)
-                  } else {
-                    newSet.add(featureId)
-                  }
-                  return newSet
-                })
+                setSelectedBuildings((prev) =>
+                  prev.includes(featureId) ? prev.filter((id) => id !== featureId) : [...prev, featureId],
+                )
                 clickTimeout.current = null
               }, 300)
             }
@@ -613,7 +602,7 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
               clickTimeout.current = null
 
               // Double click - show detailed info
-              new mapboxglLib.Popup()
+              new mapboxglRef.current.Popup()
                 .setLngLat(e.lngLat)
                 .setHTML(`
                 <div style="color: #00ffff; background: #0a0a0f; padding: 15px; border-radius: 8px; max-width: 300px;">
@@ -650,7 +639,7 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
           map.current.on("click", "poi-labels", (e: any) => {
             const feature = e.features[0]
 
-            new mapboxglLib.Popup()
+            new mapboxglRef.current.Popup()
               .setLngLat(e.lngLat)
               .setHTML(`
               <div style="color: #00ffff; background: #0a0a0f; padding: 15px; border-radius: 8px; max-width: 300px;">
@@ -720,7 +709,7 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
 
   // Update map style when view changes
   useEffect(() => {
-    if (!map.current || !mapboxgl) return
+    if (!map.current) return
 
     const styleUrl = getMapStyle()
     map.current.setStyle(styleUrl)
@@ -729,7 +718,7 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
       addInteractionLayers()
       updateSelectedBuildingsFilter()
     })
-  }, [mapView, mapboxgl, buildingsVisible, selectedBuildings]) // Added buildingsVisible and selectedBuildings to dependencies
+  }, [mapView, buildingsVisible, selectedBuildings]) // Added buildingsVisible and selectedBuildings to dependencies
 
   const runSearch = useCallback(
     async (query: string) => {
@@ -813,7 +802,7 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
   }
 
   const clearSelectedBuildings = () => {
-    setSelectedBuildings(new Set())
+    setSelectedBuildings([])
   }
 
   if (loadError) {
@@ -939,7 +928,7 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
                 </Button>
               </div>
 
-              {selectedBuildings.size > 0 && (
+              {selectedBuildings.length > 0 && (
                 <Button
                   type="button"
                   size="sm"
@@ -947,7 +936,7 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
                   onClick={clearSelectedBuildings}
                   className="border-red-500/30 text-red-300 bg-transparent hover:bg-red-500/10"
                 >
-                  Clear Selected ({selectedBuildings.size})
+                  Clear Selected ({selectedBuildings.length})
                 </Button>
               )}
             </div>
@@ -1102,86 +1091,6 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
               </div>
             </div>
           )}
-
-          {/* Map Controls - Right Side */}
-          <div className="absolute top-4 right-4 flex flex-col gap-2">
-            <Button
-              onClick={resetBearing}
-              size="sm"
-              className="bg-gray-900/90 hover:bg-gray-800 text-cyan-300 border border-cyan-500/30 backdrop-blur-sm"
-            >
-              <Navigation className="w-4 h-4" />
-            </Button>
-            <Button
-              onClick={zoomIn}
-              size="sm"
-              className="bg-gray-900/90 hover:bg-gray-800 text-cyan-300 border border-cyan-500/30 backdrop-blur-sm"
-            >
-              <Plus className="w-4 h-4" />
-            </Button>
-            <Button
-              onClick={zoomOut}
-              size="sm"
-              className="bg-gray-900/90 hover:bg-gray-800 text-cyan-300 border border-cyan-500/30 backdrop-blur-sm"
-            >
-              <Minus className="w-4 h-4" />
-            </Button>
-            <Button
-              onClick={toggleBuildings}
-              size="sm"
-              className="bg-gray-900/90 hover:bg-gray-800 text-cyan-300 border border-cyan-500/30 backdrop-blur-sm"
-            >
-              {buildingsVisible ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-            </Button>
-          </div>
-
-          {/* Map Legend */}
-          <div className="absolute bottom-4 left-4 bg-gray-900/90 backdrop-blur-sm rounded-lg p-3 border border-cyan-500/30">
-            <div className="text-xs font-semibold mb-2 text-cyan-400 uppercase tracking-wider">Legend</div>
-            <div className="space-y-1 text-xs">
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 bg-green-400 rounded-full shadow-lg shadow-green-400/50"></div>
-                <span className="text-green-300">Live Events</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 bg-blue-400 rounded-full shadow-lg shadow-blue-400/50"></div>
-                <span className="text-blue-300">Upcoming</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 bg-orange-400 rounded-full shadow-lg shadow-orange-400/50"></div>
-                <span className="text-orange-300">Scheduled</span>
-              </div>
-              {userLocation && (
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 bg-cyan-400 rounded-full animate-pulse shadow-lg shadow-cyan-400/50"></div>
-                  <span className="text-cyan-300">Your Location</span>
-                </div>
-              )}
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 bg-yellow-400 rounded shadow-lg shadow-yellow-400/50"></div>
-                <span className="text-yellow-300">Hover Highlight</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 bg-cyan-400 rounded shadow-lg shadow-cyan-400/50"></div>
-                <span className="text-cyan-300">Selected ({selectedBuildings.size})</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Interaction Instructions */}
-          <div className="absolute top-4 left-4 bg-gray-900/90 backdrop-blur-sm rounded-lg p-3 border border-cyan-500/30 max-w-xs">
-            <div className="text-xs font-semibold mb-2 text-cyan-400 uppercase tracking-wider">Interactions</div>
-            <div className="space-y-1 text-xs text-cyan-300">
-              <div>• Hover: Highlight buildings/roads</div>
-              <div>• Single Click: Toggle building selection</div>
-              <div>• Double Click: View detailed info</div>
-              <div>• POI Click: Show point details</div>
-            </div>
-          </div>
-
-          {/* Tron-style corner decorations */}
-          <div className="absolute top-4 right-4 w-8 h-8 border-t-2 border-r-2 border-cyan-400/60 pointer-events-none"></div>
-          <div className="absolute bottom-4 right-4 w-8 h-8 border-b-2 border-r-2 border-cyan-400/60 pointer-events-none"></div>
         </div>
       </Card>
     </div>
