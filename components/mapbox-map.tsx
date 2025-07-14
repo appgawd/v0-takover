@@ -266,7 +266,7 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
         type: "fill-extrusion",
         source: "mapbox-streets",
         "source-layer": "building",
-        filter: ["in", ["get", "id"]],
+        filter: ["==", ["get", "id"], ""],
         paint: {
           "fill-extrusion-color": "#00ffff",
           "fill-extrusion-height": ["get", "height"],
@@ -362,7 +362,7 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
       type: "fill-extrusion",
       source: "composite",
       "source-layer": "building",
-      filter: ["in", ["get", "id"]],
+      filter: ["==", ["get", "id"], ""],
       paint: {
         "fill-extrusion-color": "#00ffff",
         "fill-extrusion-height": ["case", ["has", "height"], ["get", "height"], 10],
