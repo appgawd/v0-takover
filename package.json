@@ -46,6 +46,7 @@
     "input-otp": "latest",
     "leaflet": "latest",
     "lucide-react": "^0.454.0",
+    "mapbox-gl": "latest",
     "next": "14.2.16",
     "next-themes": "latest",
     "react": "^18",
