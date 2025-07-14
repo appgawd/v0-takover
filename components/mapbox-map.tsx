@@ -43,9 +43,8 @@ interface MapboxMapProps {
 
 interface SearchResult {
   id: string
-  place_name: string
+  name: string
   center: [number, number]
-  place_type: string[]
 }
 
 // ────────────────────────────────────────────────────────────────────────────────
@@ -91,7 +90,7 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
   const [selectedTool, setSelectedTool] = useState<string | null>(null)
   const [buildingsVisible, setBuildingsVisible] = useState(true)
   const [selectedBuildings, setSelectedBuildings] = useState<string[]>([])
-  const [hoveredFeature, setHoveredFeature] = useState<any>(null)
+  const [hoveredLabel, setHoveredLabel] = useState<string | null>(null)
   const [mapboxToken, setMapboxToken] = useState<string>("")
   const mapboxglRef = useRef<any>(null)
 
@@ -305,13 +304,14 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
             const feature = e.features[0]
             const featureId = feature.id || feature.properties.id || `${feature.properties.osm_id || Math.random()}`
 
-            setHoveredFeature(feature)
+            const label = feature.properties.name || feature.properties.class || feature.properties.type || "Feature"
+            setHoveredLabel(`${label} (Building)`)
             safeSetFilter(map.current, "building-hover", ["==", ["get", "id"], featureId])
           })
 
           map.current.on("mouseleave", "building", () => {
             map.current.getCanvas().style.cursor = ""
-            setHoveredFeature(null)
+            setHoveredLabel(null)
             safeSetFilter(map.current, "building-hover", ["==", ["get", "id"], ""])
           })
 
@@ -321,25 +321,28 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
             const feature = e.features[0]
             const featureId = feature.id || feature.properties.id || `${feature.properties.osm_id || Math.random()}`
 
-            setHoveredFeature(feature)
+            const label = feature.properties.name || feature.properties.class || feature.properties.type || "Feature"
+            setHoveredLabel(`${label} (Road)`)
             safeSetFilter(map.current, "road-hover", ["==", ["get", "id"], featureId])
           })
 
           map.current.on("mouseleave", "road", () => {
             map.current.getCanvas().style.cursor = ""
-            setHoveredFeature(null)
+            setHoveredLabel(null)
             safeSetFilter(map.current, "road-hover", ["==", ["get", "id"], ""])
           })
 
           // POI hover effects
           map.current.on("mouseenter", "poi-labels", (e: any) => {
             map.current.getCanvas().style.cursor = "pointer"
-            setHoveredFeature(e.features[0])
+            const feature = e.features[0]
+            const label = feature.properties.name || feature.properties.class || feature.properties.type || "Feature"
+            setHoveredLabel(label)
           })
 
           map.current.on("mouseleave", "poi-labels", () => {
             map.current.getCanvas().style.cursor = ""
-            setHoveredFeature(null)
+            setHoveredLabel(null)
           })
 
           // Building click handlers
@@ -532,7 +535,12 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
         }
 
         const data = await response.json()
-        setSearchResults(data.features || [])
+        const simplified = (data.features || []).map((f: any) => ({
+          id: f.id,
+          name: f.place_name,
+          center: f.center as [number, number],
+        }))
+        setSearchResults(simplified)
 
         if (data.features && data.features.length > 0 && map.current) {
           const [lng, lat] = data.features[0].center
@@ -589,7 +597,6 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
     setBuildingsVisible((prev) => {
       const next = !prev
       safeSetVisibility(map.current, "building", next)
-      // Hybrid view uses the same layer IDs we created:
       safeSetVisibility(map.current, "building-hover", next)
       safeSetVisibility(map.current, "building-selected", next)
       return next
@@ -848,16 +855,9 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
               </div>
             )}
 
-            {/* Hover Info */}
-            {hoveredFeature && (
+            {hoveredLabel && (
               <div className="text-sm text-yellow-400 bg-yellow-500/10 p-2 rounded">
-                <strong>Hovering:</strong>{" "}
-                {hoveredFeature.properties.name ||
-                  hoveredFeature.properties.class ||
-                  hoveredFeature.properties.type ||
-                  "Feature"}
-                {hoveredFeature.source === "building" && " (Building)"}
-                {hoveredFeature.source === "road" && " (Road)"}
+                <strong>Hovering:</strong> {hoveredLabel}
               </div>
             )}
 
