@@ -266,7 +266,7 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
         type: "fill-extrusion",
         source: "mapbox-streets",
         "source-layer": "building",
-        filter: ["==", ["get", "id"], ""],
+        filter: ["in", ["get", "id"], ["literal", []]], // Corrected filter
         paint: {
           "fill-extrusion-color": "#00ffff",
           "fill-extrusion-height": ["get", "height"],
@@ -336,13 +336,23 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
   const addInteractionLayers = () => {
     if (!map.current) return
 
-    // Add hover layers for different map styles
+    // Only add interaction layers if the current map style supports them (i.e., has vector building/road data)
+    // The 'streets' (tronDarkStyle) already defines these layers.
+    // 'hybrid' (satellite-streets-v12) uses 'composite' source for vector data.
+    // 'satellite' (satellite-v9) does NOT have vector building/road data.
     if (mapView === "streets") {
-      // Tron style already has the layers defined
+      // Tron style already has the layers defined, ensure their visibility is correct
+      safeSetPaint(map.current, "building", "fill-extrusion-opacity", buildingsVisible ? 0.8 : 0)
+      updateSelectedBuildingsFilter() // Ensure selected buildings filter is applied
       return
     }
 
-    // For satellite and hybrid views, add interaction layers
+    if (mapView === "satellite") {
+      // No vector layers for interaction in satellite view
+      return
+    }
+
+    // For hybrid view, add interaction layers using 'composite' source
     const buildingHoverLayer = {
       id: "building-hover",
       type: "fill-extrusion",
@@ -362,7 +372,7 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
       type: "fill-extrusion",
       source: "composite",
       "source-layer": "building",
-      filter: ["==", ["get", "id"], ""],
+      filter: ["in", ["get", "id"], ["literal", []]], // Corrected initial filter
       paint: {
         "fill-extrusion-color": "#00ffff",
         "fill-extrusion-height": ["case", ["has", "height"], ["get", "height"], 10],
@@ -393,6 +403,10 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
     safeAddLayer(map.current, buildingHoverLayer)
     safeAddLayer(map.current, buildingSelectedLayer)
     safeAddLayer(map.current, roadHoverLayer)
+
+    // Also ensure the building visibility and selected filter are applied for hybrid view
+    safeSetPaint(map.current, "building", "fill-extrusion-opacity", buildingsVisible ? 0.8 : 0)
+    updateSelectedBuildingsFilter()
   }
 
   const updateSelectedBuildingsFilter = () => {
@@ -402,7 +416,7 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
     if (selectedArray.length > 0) {
       safeSetFilter(map.current, "building-selected", ["in", ["get", "id"], ["literal", selectedArray]])
     } else {
-      safeSetFilter(map.current, "building-selected", ["in", ["get", "id"]])
+      safeSetFilter(map.current, "building-selected", ["in", ["get", "id"], ["literal", []]]) // Ensure filter is always valid
     }
   }
 
@@ -715,7 +729,7 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
       addInteractionLayers()
       updateSelectedBuildingsFilter()
     })
-  }, [mapView, mapboxgl])
+  }, [mapView, mapboxgl, buildingsVisible, selectedBuildings]) // Added buildingsVisible and selectedBuildings to dependencies
 
   const runSearch = useCallback(
     async (query: string) => {
