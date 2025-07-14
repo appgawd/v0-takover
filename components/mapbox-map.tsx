@@ -48,6 +48,20 @@ interface SearchResult {
   place_type: string[]
 }
 
+// ────────────────────────────────────────────────────────────────────────────────
+// Utility helpers – safely interact with a layer if it exists
+const safeSetPaint = (mp: any, layerId: string, prop: string, value: any) => {
+  if (mp?.getLayer(layerId)) {
+    mp.setPaintProperty(layerId, prop, value)
+  }
+}
+
+const safeSetFilter = (mp: any, layerId: string, filter: any) => {
+  if (mp?.getLayer(layerId)) {
+    mp.setFilter(layerId, filter)
+  }
+}
+
 export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProps) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<any>(null)
@@ -343,7 +357,11 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
               setSelectedBuilding(building)
 
               // Highlight selected building
-              map.current.setFilter("building-highlight", ["==", ["get", "id"], building.id || building.properties.id])
+              safeSetFilter(map.current, "building-highlight", [
+                "==",
+                ["get", "id"],
+                building.id || building.properties.id,
+              ])
 
               // Show building popup
               new mapboxglLib.Popup()
@@ -409,9 +427,29 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
 
   // Update map style when view changes
   useEffect(() => {
-    if (map.current && mapboxgl) {
-      map.current.setStyle(getMapStyle())
-    }
+    if (!map.current || !mapboxgl) return
+
+    const styleUrl = getMapStyle()
+    map.current.setStyle(styleUrl)
+
+    map.current.once("style.load", () => {
+      //  Add highlight layer back in Tron style only
+      if (styleUrl === tronDarkStyle && !map.current.getLayer("building-highlight")) {
+        map.current.addLayer({
+          id: "building-highlight",
+          type: "fill-extrusion",
+          source: "mapbox-streets",
+          "source-layer": "building",
+          filter: ["==", ["get", "id"], ""],
+          paint: {
+            "fill-extrusion-color": "#00ffff",
+            "fill-extrusion-height": ["get", "height"],
+            "fill-extrusion-base": ["get", "min_height"],
+            "fill-extrusion-opacity": 0.9,
+          },
+        })
+      }
+    })
   }, [mapView, mapboxgl])
 
   const runSearch = useCallback(
@@ -484,19 +522,18 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
   }
 
   const toggleBuildings = () => {
-    setBuildingsVisible(!buildingsVisible)
-    if (map.current) {
-      map.current.setPaintProperty("building", "fill-extrusion-opacity", buildingsVisible ? 0 : 0.8)
-    }
+    setBuildingsVisible((prev) => {
+      const next = !prev
+      safeSetPaint(map.current, "building", "fill-extrusion-opacity", next ? 0.8 : 0)
+      return next
+    })
   }
 
   const selectTool = (tool: string) => {
     setSelectedTool(selectedTool === tool ? null : tool)
     if (selectedBuilding && tool !== "building") {
       setSelectedBuilding(null)
-      if (map.current) {
-        map.current.setFilter("building-highlight", ["==", ["get", "id"], ""])
-      }
+      safeSetFilter(map.current, "building-highlight", ["==", ["get", "id"], ""])
     }
   }
 
