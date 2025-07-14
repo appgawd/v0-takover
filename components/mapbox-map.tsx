@@ -68,6 +68,13 @@ const safeAddLayer = (mp: any, layer: any) => {
   }
 }
 
+// Toggle a layer's visibility if it exists
+const safeSetVisibility = (mp: any, layerId: string, visible: boolean) => {
+  if (mp?.getLayer(layerId)) {
+    mp.setLayoutProperty(layerId, "visibility", visible ? "visible" : "none")
+  }
+}
+
 export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProps) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<any>(null)
@@ -188,8 +195,8 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
     safeAddLayer(map.current, buildingSelectedLayer)
     safeAddLayer(map.current, roadHoverLayer)
 
-    // Also ensure the building visibility and selected filter are applied
-    safeSetPaint(map.current, "building", "fill-extrusion-opacity", buildingsVisible ? 0.8 : 0)
+    // Also ensure the building layer visibility matches current toggle
+    safeSetVisibility(map.current, "building", buildingsVisible)
     updateSelectedBuildingsFilter()
   }
 
@@ -581,7 +588,10 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
   const toggleBuildings = () => {
     setBuildingsVisible((prev) => {
       const next = !prev
-      safeSetPaint(map.current, "building", "fill-extrusion-opacity", next ? 0.8 : 0)
+      safeSetVisibility(map.current, "building", next)
+      // Hybrid view uses the same layer IDs we created:
+      safeSetVisibility(map.current, "building-hover", next)
+      safeSetVisibility(map.current, "building-selected", next)
       return next
     })
   }
