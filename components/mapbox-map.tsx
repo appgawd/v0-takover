@@ -94,10 +94,19 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
       try {
         const res = await fetch("/api/mapbox-token")
         const { token } = (await res.json()) as { token: string }
+
+        // NEW: validate token -------------------------------------------------
+        if (!token || token.trim() === "") {
+          setLoadError("Missing Mapbox access token. Define NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN in your environment.")
+          setIsLoading(false)
+          return
+        }
+        // --------------------------------------------------------------------
+
         setMapboxToken(token)
       } catch (e) {
         console.error("Could not fetch Mapbox token:", e)
-        setLoadError("Failed to load map (token error).")
+        setLoadError("Failed to load map (token fetch error).")
         setIsLoading(false)
       }
     }
@@ -397,9 +406,9 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
     }
   }
 
-  // Initialize map when token is available
+  // Initialise map when token is available
   useEffect(() => {
-    if (!mapboxToken) return
+    if (!mapboxToken || loadError) return //  <-- added loadError check
     if (map.current) return
     if (!mapContainer.current) return
 
@@ -441,11 +450,11 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
               .setLngLat(userLocation)
               .setPopup(
                 new mapboxglLib.Popup().setHTML(`
-                <div style="color: #00ffff; background: #0a0a0f; padding: 10px; border-radius: 8px;">
-                  <strong>📍 Your Location</strong><br>
-                  <small>${userLocation[1].toFixed(4)}, ${userLocation[0].toFixed(4)}</small>
-                </div>
-              `),
+              <div style="color: #00ffff; background: #0a0a0f; padding: 10px; border-radius: 8px;">
+                <strong>📍 Your Location</strong><br>
+                <small>${userLocation[1].toFixed(4)}, ${userLocation[0].toFixed(4)}</small>
+              </div>
+            `),
               )
               .addTo(map.current)
           }
@@ -461,22 +470,22 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
               .setLngLat(event.coordinates)
               .setPopup(
                 new mapboxglLib.Popup().setHTML(`
-                <div style="color: #00ffff; background: #0a0a0f; padding: 15px; border-radius: 8px; min-width: 200px;">
-                  <h3 style="margin: 0 0 8px 0; color: ${color};">${event.name}</h3>
-                  <p style="margin: 0 0 4px 0;">📍 ${event.location}</p>
-                  <p style="margin: 0 0 4px 0;">⏰ ${event.time}</p>
-                  <p style="margin: 0 0 8px 0;">👥 ${event.attendees} attending</p>
-                  <div style="
-                    background: ${color};
-                    color: #0a0a0f;
-                    padding: 4px 12px;
-                    border-radius: 12px;
-                    font-size: 12px;
-                    display: inline-block;
-                    font-weight: bold;
-                  ">${event.type.toUpperCase()}</div>
-                </div>
-              `),
+              <div style="color: #00ffff; background: #0a0a0f; padding: 15px; border-radius: 8px; min-width: 200px;">
+                <h3 style="margin: 0 0 8px 0; color: ${color};">${event.name}</h3>
+                <p style="margin: 0 0 4px 0;">📍 ${event.location}</p>
+                <p style="margin: 0 0 4px 0;">⏰ ${event.time}</p>
+                <p style="margin: 0 0 8px 0;">👥 ${event.attendees} attending</p>
+                <div style="
+                  background: ${color};
+                  color: #0a0a0f;
+                  padding: 4px 12px;
+                  border-radius: 12px;
+                  font-size: 12px;
+                  display: inline-block;
+                  font-weight: bold;
+                ">${event.type.toUpperCase()}</div>
+              </div>
+            `),
               )
               .addTo(map.current)
 
@@ -541,28 +550,28 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
               new mapboxglLib.Popup()
                 .setLngLat(e.lngLat)
                 .setHTML(`
-                  <div style="color: #00ffff; background: #0a0a0f; padding: 15px; border-radius: 8px; max-width: 300px;">
-                    <h3 style="margin: 0 0 8px 0; color: #00ffff;">🏢 Building Details</h3>
-                    <div style="margin-bottom: 8px;">
-                      <strong>Height:</strong> ${feature.properties.height || "Unknown"}
-                    </div>
-                    <div style="margin-bottom: 8px;">
-                      <strong>Type:</strong> ${feature.properties.type || "Building"}
-                    </div>
-                    <div style="margin-bottom: 8px;">
-                      <strong>Levels:</strong> ${feature.properties.levels || "Unknown"}
-                    </div>
-                    <div style="margin-bottom: 8px;">
-                      <strong>Address:</strong> ${feature.properties.address || "Not available"}
-                    </div>
-                    <div style="margin-bottom: 8px;">
-                      <strong>ID:</strong> ${featureId}
-                    </div>
-                    <div style="font-size: 12px; color: #888; margin-top: 10px;">
-                      Double-click to view details • Single-click to toggle selection
-                    </div>
+                <div style="color: #00ffff; background: #0a0a0f; padding: 15px; border-radius: 8px; max-width: 300px;">
+                  <h3 style="margin: 0 0 8px 0; color: #00ffff;">🏢 Building Details</h3>
+                  <div style="margin-bottom: 8px;">
+                    <strong>Height:</strong> ${feature.properties.height || "Unknown"}
                   </div>
-                `)
+                  <div style="margin-bottom: 8px;">
+                    <strong>Type:</strong> ${feature.properties.type || "Building"}
+                  </div>
+                  <div style="margin-bottom: 8px;">
+                    <strong>Levels:</strong> ${feature.properties.levels || "Unknown"}
+                  </div>
+                  <div style="margin-bottom: 8px;">
+                    <strong>Address:</strong> ${feature.properties.address || "Not available"}
+                  </div>
+                  <div style="margin-bottom: 8px;">
+                    <strong>ID:</strong> ${featureId}
+                  </div>
+                  <div style="font-size: 12px; color: #888; margin-top: 10px;">
+                    Double-click to view details • Single-click to toggle selection
+                  </div>
+                </div>
+              `)
                 .addTo(map.current)
             } else {
               // Single click - toggle selection
@@ -593,28 +602,28 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
               new mapboxglLib.Popup()
                 .setLngLat(e.lngLat)
                 .setHTML(`
-                  <div style="color: #00ffff; background: #0a0a0f; padding: 15px; border-radius: 8px; max-width: 300px;">
-                    <h3 style="margin: 0 0 8px 0; color: #00ffff;">🛣️ Road Details</h3>
-                    <div style="margin-bottom: 8px;">
-                      <strong>Name:</strong> ${feature.properties.name || "Unnamed Road"}
-                    </div>
-                    <div style="margin-bottom: 8px;">
-                      <strong>Class:</strong> ${feature.properties.class || "Unknown"}
-                    </div>
-                    <div style="margin-bottom: 8px;">
-                      <strong>Type:</strong> ${feature.properties.type || "Road"}
-                    </div>
-                    <div style="margin-bottom: 8px;">
-                      <strong>Surface:</strong> ${feature.properties.surface || "Unknown"}
-                    </div>
-                    <div style="margin-bottom: 8px;">
-                      <strong>Max Speed:</strong> ${feature.properties.maxspeed || "Unknown"}
-                    </div>
-                    <div style="font-size: 12px; color: #888; margin-top: 10px;">
-                      Double-click to view details • Hover to highlight
-                    </div>
+                <div style="color: #00ffff; background: #0a0a0f; padding: 15px; border-radius: 8px; max-width: 300px;">
+                  <h3 style="margin: 0 0 8px 0; color: #00ffff;">🛣️ Road Details</h3>
+                  <div style="margin-bottom: 8px;">
+                    <strong>Name:</strong> ${feature.properties.name || "Unnamed Road"}
                   </div>
-                `)
+                  <div style="margin-bottom: 8px;">
+                    <strong>Class:</strong> ${feature.properties.class || "Unknown"}
+                  </div>
+                  <div style="margin-bottom: 8px;">
+                    <strong>Type:</strong> ${feature.properties.type || "Road"}
+                  </div>
+                  <div style="margin-bottom: 8px;">
+                    <strong>Surface:</strong> ${feature.properties.surface || "Unknown"}
+                  </div>
+                  <div style="margin-bottom: 8px;">
+                    <strong>Max Speed:</strong> ${feature.properties.maxspeed || "Unknown"}
+                  </div>
+                  <div style="font-size: 12px; color: #888; margin-top: 10px;">
+                    Double-click to view details • Hover to highlight
+                  </div>
+                </div>
+              `)
                 .addTo(map.current)
             } else {
               clickTimeout.current = setTimeout(() => {
@@ -630,21 +639,21 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
             new mapboxglLib.Popup()
               .setLngLat(e.lngLat)
               .setHTML(`
-                <div style="color: #00ffff; background: #0a0a0f; padding: 15px; border-radius: 8px; max-width: 300px;">
-                  <h3 style="margin: 0 0 8px 0; color: #00ffff;">📍 ${feature.properties.name || "Point of Interest"}</h3>
-                  <div style="margin-bottom: 8px;">
-                    <strong>Category:</strong> ${feature.properties.class || "Unknown"}
-                  </div>
-                  <div style="margin-bottom: 8px;">
-                    <strong>Type:</strong> ${feature.properties.type || "POI"}
-                  </div>
-                  ${feature.properties.address ? `<div style="margin-bottom: 8px;"><strong>Address:</strong> ${feature.properties.address}</div>` : ""}
-                  ${feature.properties.phone ? `<div style="margin-bottom: 8px;"><strong>Phone:</strong> ${feature.properties.phone}</div>` : ""}
-                  <div style="font-size: 12px; color: #888; margin-top: 10px;">
-                    Point of Interest
-                  </div>
+              <div style="color: #00ffff; background: #0a0a0f; padding: 15px; border-radius: 8px; max-width: 300px;">
+                <h3 style="margin: 0 0 8px 0; color: #00ffff;">📍 ${feature.properties.name || "Point of Interest"}</h3>
+                <div style="margin-bottom: 8px;">
+                  <strong>Category:</strong> ${feature.properties.class || "Unknown"}
                 </div>
-              `)
+                <div style="margin-bottom: 8px;">
+                  <strong>Type:</strong> ${feature.properties.type || "POI"}
+                </div>
+                ${feature.properties.address ? `<div style="margin-bottom: 8px;"><strong>Address:</strong> ${feature.properties.address}</div>` : ""}
+                ${feature.properties.phone ? `<div style="margin-bottom: 8px;"><strong>Phone:</strong> ${feature.properties.phone}</div>` : ""}
+                <div style="font-size: 12px; color: #888; margin-top: 10px;">
+                  Point of Interest
+                </div>
+              </div>
+            `)
               .addTo(map.current)
           })
 
@@ -652,8 +661,11 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
         })
 
         map.current.on("error", (e: any) => {
-          console.error("Mapbox error:", e)
-          setLoadError("Failed to load map. Please check your connection.")
+          const msg = e?.error?.message ?? "Unknown Mapbox error. Check the console for details."
+          console.error("Mapbox error:", e.error ?? e)
+          setLoadError(
+            msg.includes("access token") ? "Invalid Mapbox token. Double-check NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN." : msg,
+          )
           setIsLoading(false)
         })
       } catch (error) {
