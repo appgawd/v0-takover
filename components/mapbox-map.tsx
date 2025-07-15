@@ -24,6 +24,7 @@ import {
   EyeOff,
   Radio,
   Home,
+  X,
 } from "lucide-react"
 
 interface Event {
@@ -47,6 +48,17 @@ interface SearchResult {
   id: string
   name: string
   center: [number, number]
+}
+
+interface BuildingDetails {
+  id: string
+  name: string
+  height: string
+  type: string
+  levels: string
+  address: string
+  coordinates: [number, number]
+  order: number
 }
 
 // ────────────────────────────────────────────────────────────────────────────────
@@ -80,6 +92,7 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<any>(null)
   const clickTimeout = useRef<NodeJS.Timeout | null>(null)
+  const buildingMarkersRef = useRef<any[]>([])
 
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState<string>("")
@@ -92,7 +105,8 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
   const [selectedTool, setSelectedTool] = useState<string | null>(null)
   const [buildingsVisible, setBuildingsVisible] = useState(true)
   const [selectedBuildings, setSelectedBuildings] = useState<string[]>([])
-  const [hoveredLabel, setHoveredLabel] = useState<string | null>(null)
+  const [currentViewingLabel, setCurrentViewingLabel] = useState<string | null>(null)
+  const [buildingDetails, setBuildingDetails] = useState<BuildingDetails[]>([])
   const [mapboxToken, setMapboxToken] = useState<string>("")
   const mapboxglRef = useRef<any>(null)
 
@@ -131,6 +145,40 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
       default:
         return "mapbox://styles/rarri/cmd1nzc0b00hc01r48s6760kq" // New custom style URL
     }
+  }
+
+  const addBuildingMarker = (coordinates: [number, number], order: number) => {
+    if (!map.current || !mapboxglRef.current) return
+
+    // Create a custom marker element
+    const markerElement = document.createElement("div")
+    markerElement.className = "building-marker"
+    markerElement.style.cssText = `
+      width: 24px;
+      height: 24px;
+      background: #00ffff;
+      border: 2px solid #ffffff;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: bold;
+      color: #000;
+      cursor: pointer;
+      box-shadow: 0 2px 8px rgba(0, 255, 255, 0.5);
+    `
+    markerElement.textContent = order.toString()
+
+    const marker = new mapboxglRef.current.Marker(markerElement).setLngLat(coordinates).addTo(map.current)
+
+    buildingMarkersRef.current.push(marker)
+    return marker
+  }
+
+  const clearBuildingMarkers = () => {
+    buildingMarkersRef.current.forEach((marker) => marker.remove())
+    buildingMarkersRef.current = []
   }
 
   const addInteractionLayers = () => {
@@ -307,13 +355,14 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
             const featureId = feature.id || feature.properties.id || `${feature.properties.osm_id || Math.random()}`
 
             const label = feature.properties.name || feature.properties.class || feature.properties.type || "Feature"
-            setHoveredLabel(`${label} (Building)`)
+            const buildingType = feature.properties.type || feature.properties.class || "Building"
+            setCurrentViewingLabel(`${label} (${buildingType})`)
             safeSetFilter(map.current, "building-hover", ["==", ["get", "id"], featureId])
           })
 
           map.current.on("mouseleave", "building", () => {
             map.current.getCanvas().style.cursor = ""
-            setHoveredLabel(null)
+            // Don't clear the viewing label on mouse leave - it stays persistent
             safeSetFilter(map.current, "building-hover", ["==", ["get", "id"], ""])
           })
 
@@ -324,13 +373,13 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
             const featureId = feature.id || feature.properties.id || `${feature.properties.osm_id || Math.random()}`
 
             const label = feature.properties.name || feature.properties.class || feature.properties.type || "Feature"
-            setHoveredLabel(`${label} (Road)`)
+            setCurrentViewingLabel(`${label} (Road)`)
             safeSetFilter(map.current, "road-hover", ["==", ["get", "id"], featureId])
           })
 
           map.current.on("mouseleave", "road", () => {
             map.current.getCanvas().style.cursor = ""
-            setHoveredLabel(null)
+            // Don't clear the viewing label on mouse leave - it stays persistent
             safeSetFilter(map.current, "road-hover", ["==", ["get", "id"], ""])
           })
 
@@ -339,12 +388,12 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
             map.current.getCanvas().style.cursor = "pointer"
             const feature = e.features[0]
             const label = feature.properties.name || feature.properties.class || feature.properties.type || "Feature"
-            setHoveredLabel(label)
+            setCurrentViewingLabel(`${label} (POI)`)
           })
 
           map.current.on("mouseleave", "poi-labels", () => {
             map.current.getCanvas().style.cursor = ""
-            setHoveredLabel(null)
+            // Don't clear the viewing label on mouse leave - it stays persistent
           })
 
           // Building click handlers
@@ -356,33 +405,31 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
               clearTimeout(clickTimeout.current)
               clickTimeout.current = null
 
-              // Double click - show detailed info
-              new mapboxglRef.current.Popup()
-                .setLngLat(e.lngLat)
-                .setHTML(`
-                <div style="color: #00ffff; background: #0a0a0f; padding: 15px; border-radius: 8px; max-width: 300px;">
-                  <h3 style="margin: 0 0 8px 0; color: #00ffff;">🏢 Building Details</h3>
-                  <div style="margin-bottom: 8px;">
-                    <strong>Height:</strong> ${feature.properties.height || "Unknown"}
-                  </div>
-                  <div style="margin-bottom: 8px;">
-                    <strong>Type:</strong> ${feature.properties.type || "Building"}
-                  </div>
-                  <div style="margin-bottom: 8px;">
-                    <strong>Levels:</strong> ${feature.properties.levels || "Unknown"}
-                  </div>
-                  <div style="margin-bottom: 8px;">
-                    <strong>Address:</strong> ${feature.properties.address || "Not available"}
-                  </div>
-                  <div style="margin-bottom: 8px;">
-                    <strong>ID:</strong> ${featureId}
-                  </div>
-                  <div style="font-size: 12px; color: #888; margin-top: 10px;">
-                    Double-click to view details • Single-click to toggle selection
-                  </div>
-                </div>
-              `)
-                .addTo(map.current)
+              // Double click - add to building details list
+              const buildingName =
+                feature.properties.name || feature.properties.class || feature.properties.type || "Building"
+              const buildingType = feature.properties.type || feature.properties.class || "Building"
+
+              const newBuilding: BuildingDetails = {
+                id: featureId,
+                name: buildingName,
+                height: feature.properties.height || "Unknown",
+                type: buildingType,
+                levels: feature.properties.levels || "Unknown",
+                address: feature.properties.address || "Not available",
+                coordinates: [e.lngLat.lng, e.lngLat.lat],
+                order: buildingDetails.length + 1,
+              }
+
+              setBuildingDetails((prev) => {
+                const exists = prev.find((b) => b.id === featureId)
+                if (!exists) {
+                  // Add marker to map
+                  addBuildingMarker([e.lngLat.lng, e.lngLat.lat], newBuilding.order)
+                  return [...prev, newBuilding]
+                }
+                return prev
+              })
             } else {
               // Single click - toggle selection
               clickTimeout.current = setTimeout(() => {
@@ -402,11 +449,11 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
               clearTimeout(clickTimeout.current)
               clickTimeout.current = null
 
-              // Double click - show detailed info
+              // Double click - show detailed info with transparency
               new mapboxglRef.current.Popup()
                 .setLngLat(e.lngLat)
                 .setHTML(`
-                <div style="color: #00ffff; background: #0a0a0f; padding: 15px; border-radius: 8px; max-width: 300px;">
+                <div style="color: #00ffff; background: rgba(10, 10, 15, 0.9); padding: 15px; border-radius: 8px; max-width: 300px; backdrop-filter: blur(10px);">
                   <h3 style="margin: 0 0 8px 0; color: #00ffff;">🛣️ Road Details</h3>
                   <div style="margin-bottom: 8px;">
                     <strong>Name:</strong> ${feature.properties.name || "Unnamed Road"}
@@ -443,7 +490,7 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
             new mapboxglRef.current.Popup()
               .setLngLat(e.lngLat)
               .setHTML(`
-              <div style="color: #00ffff; background: #0a0a0f; padding: 15px; border-radius: 8px; max-width: 300px;">
+              <div style="color: #00ffff; background: rgba(10, 10, 15, 0.9); padding: 15px; border-radius: 8px; max-width: 300px; backdrop-filter: blur(10px);">
                 <h3 style="margin: 0 0 8px 0; color: #00ffff;">📍 ${feature.properties.name || "Point of Interest"}</h3>
                 <div style="margin-bottom: 8px;">
                   <strong>Category:</strong> ${feature.properties.class || "Unknown"}
@@ -489,6 +536,7 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
         map.current.remove()
         map.current = null
       }
+      clearBuildingMarkers()
     }
   }, [mapboxToken, userLocation, events, onEventSelect, mapStyle, mapView, buildingsVisible, selectedTool])
 
@@ -518,8 +566,12 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
     map.current.once("style.load", () => {
       addInteractionLayers()
       updateSelectedBuildingsFilter()
+      // Re-add building markers after style change
+      buildingDetails.forEach((building, index) => {
+        addBuildingMarker(building.coordinates, building.order)
+      })
     })
-  }, [mapView, buildingsVisible, selectedBuildings]) // Added buildingsVisible and selectedBuildings to dependencies
+  }, [mapView, buildingsVisible, selectedBuildings, buildingDetails]) // Added buildingsVisible and selectedBuildings to dependencies
 
   const runSearch = useCallback(
     async (query: string) => {
@@ -613,6 +665,21 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
     setSelectedBuildings([])
   }
 
+  const resetVisitedBuildings = () => {
+    setBuildingDetails([])
+    clearBuildingMarkers()
+  }
+
+  const removeBuildingDetail = (buildingId: string) => {
+    setBuildingDetails((prev) => prev.filter((b) => b.id !== buildingId))
+    // Remove the corresponding marker
+    const markerIndex = buildingDetails.findIndex((b) => b.id === buildingId)
+    if (markerIndex !== -1 && buildingMarkersRef.current[markerIndex]) {
+      buildingMarkersRef.current[markerIndex].remove()
+      buildingMarkersRef.current.splice(markerIndex, 1)
+    }
+  }
+
   const handlePoliceRadio = () => {
     // Handle police radio functionality
     console.log("Opening police radio...")
@@ -635,375 +702,451 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
   }
 
   return (
-    <div className="space-y-4">
-      {/* Map Container */}
-      <Card className="bg-gray-900 border-cyan-500/30 overflow-hidden">
-        <div className="relative h-96">
-          <div ref={mapContainer} className="w-full h-full" style={{ minHeight: "384px" }} />
+    <div className="flex gap-4">
+      {/* Building Details Sidebar */}
+      {buildingDetails.length > 0 && (
+        <Card className="bg-gray-900/90 border-cyan-500/30 backdrop-blur-sm w-80 max-h-96 overflow-y-auto">
+          <div className="p-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-cyan-300">Visited Buildings</h3>
+              <Button
+                onClick={resetVisitedBuildings}
+                size="sm"
+                variant="outline"
+                className="border-red-500/30 text-red-300 bg-transparent hover:bg-red-500/10"
+              >
+                Clear All
+              </Button>
+            </div>
+            <div className="space-y-3">
+              {buildingDetails.map((building) => (
+                <div key={building.id} className="bg-gray-800/50 rounded-lg p-3 border border-cyan-500/20">
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="w-6 h-6 bg-cyan-400 rounded-full flex items-center justify-center text-xs font-bold text-black">
+                        {building.order}
+                      </div>
+                      <h4 className="font-semibold text-cyan-300 text-sm">{building.name}</h4>
+                    </div>
+                    <Button
+                      onClick={() => removeBuildingDetail(building.id)}
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 w-6 p-0 text-gray-400 hover:text-red-400"
+                    >
+                      <X className="w-3 h-3" />
+                    </Button>
+                  </div>
+                  <div className="space-y-1 text-xs text-gray-300">
+                    <div>
+                      <strong>Type:</strong> {building.type}
+                    </div>
+                    <div>
+                      <strong>Height:</strong> {building.height}
+                    </div>
+                    <div>
+                      <strong>Levels:</strong> {building.levels}
+                    </div>
+                    <div>
+                      <strong>Address:</strong> {building.address}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </Card>
+      )}
 
-          {isLoading && (
-            <div className="absolute inset-0 bg-gray-900/90 flex items-center justify-center backdrop-blur-sm">
-              <div className="text-center">
-                <Loader2 className="w-8 h-8 animate-spin mx-auto mb-2 text-cyan-400" />
-                <p className="text-cyan-300">Loading enhanced map interface...</p>
+      {/* Main Map Area */}
+      <div className="flex-1 space-y-4">
+        {/* Map Container */}
+        <Card className="bg-gray-900 border-cyan-500/30 overflow-hidden">
+          <div className="relative h-96">
+            <div ref={mapContainer} className="w-full h-full" style={{ minHeight: "384px" }} />
+
+            {isLoading && (
+              <div className="absolute inset-0 bg-gray-900/90 flex items-center justify-center backdrop-blur-sm">
+                <div className="text-center">
+                  <Loader2 className="w-8 h-8 animate-spin mx-auto mb-2 text-cyan-400" />
+                  <p className="text-cyan-300">Loading enhanced map interface...</p>
+                </div>
+              </div>
+            )}
+
+            {/* Top Left Controls - Police Radio and Home */}
+            <div className="absolute top-4 left-4 flex gap-2">
+              <Button
+                onClick={handlePoliceRadio}
+                size="sm"
+                className="bg-gray-900/90 hover:bg-gray-800 text-cyan-300 border border-cyan-500/30 backdrop-blur-sm"
+                title="Open Police Radio"
+              >
+                <Radio className="w-4 h-4" />
+              </Button>
+              <Button
+                onClick={handleNavigateHome}
+                size="sm"
+                className="bg-gray-900/90 hover:bg-gray-800 text-cyan-300 border border-cyan-500/30 backdrop-blur-sm"
+                title="Navigate to Homepage"
+              >
+                <Home className="w-4 h-4" />
+              </Button>
+            </div>
+
+            {/* Map Controls - Right Side */}
+            <div className="absolute top-4 right-4 flex flex-col gap-2">
+              <Button
+                onClick={resetBearing}
+                size="sm"
+                className="bg-gray-900/90 hover:bg-gray-800 text-cyan-300 border border-cyan-500/30 backdrop-blur-sm"
+              >
+                <Navigation className="w-4 h-4" />
+              </Button>
+              <Button
+                onClick={zoomIn}
+                size="sm"
+                className="bg-gray-900/90 hover:bg-gray-800 text-cyan-300 border border-cyan-500/30 backdrop-blur-sm"
+              >
+                <Plus className="w-4 h-4" />
+              </Button>
+              <Button
+                onClick={zoomOut}
+                size="sm"
+                className="bg-gray-900/90 hover:bg-gray-800 text-cyan-300 border border-cyan-500/30 backdrop-blur-sm"
+              >
+                <Minus className="w-4 h-4" />
+              </Button>
+              <Button
+                onClick={toggleBuildings}
+                size="sm"
+                className="bg-gray-900/90 hover:bg-gray-800 text-cyan-300 border border-cyan-500/30 backdrop-blur-sm"
+              >
+                {buildingsVisible ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </Button>
+            </div>
+
+            {/* Map Legend */}
+            <div className="absolute bottom-4 left-4 bg-gray-900/90 backdrop-blur-sm rounded-lg p-3 border border-cyan-500/30">
+              <div className="text-xs font-semibold mb-2 text-cyan-400 uppercase tracking-wider">Legend</div>
+              <div className="space-y-1 text-xs">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 bg-green-400 rounded-full shadow-lg shadow-green-400/50"></div>
+                  <span className="text-green-300">Live Events</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 bg-blue-400 rounded-full shadow-lg shadow-blue-400/50"></div>
+                  <span className="text-blue-300">Upcoming</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 bg-orange-400 rounded-full shadow-lg shadow-orange-400/50"></div>
+                  <span className="text-orange-300">Scheduled</span>
+                </div>
+                {userLocation && (
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 bg-cyan-400 rounded-full animate-pulse shadow-lg shadow-cyan-400/50"></div>
+                    <span className="text-cyan-300">Your Location</span>
+                  </div>
+                )}
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 bg-yellow-400 rounded shadow-lg shadow-yellow-400/50"></div>
+                  <span className="text-yellow-300">Hover Highlight</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 bg-cyan-400 rounded shadow-lg shadow-cyan-400/50"></div>
+                  <span className="text-cyan-300">Selected ({selectedBuildings.length})</span>
+                </div>
+                {buildingDetails.length > 0 && (
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 bg-cyan-400 rounded-full border-2 border-white shadow-lg shadow-cyan-400/50"></div>
+                    <span className="text-cyan-300">Visited Buildings</span>
+                  </div>
+                )}
               </div>
             </div>
-          )}
 
-          {/* Top Left Controls - Police Radio and Home */}
-          <div className="absolute top-4 left-4 flex gap-2">
-            <Button
-              onClick={handlePoliceRadio}
-              size="sm"
-              className="bg-gray-900/90 hover:bg-gray-800 text-cyan-300 border border-cyan-500/30 backdrop-blur-sm"
-              title="Open Police Radio"
-            >
-              <Radio className="w-4 h-4" />
-            </Button>
-            <Button
-              onClick={handleNavigateHome}
-              size="sm"
-              className="bg-gray-900/90 hover:bg-gray-800 text-cyan-300 border border-cyan-500/30 backdrop-blur-sm"
-              title="Navigate to Homepage"
-            >
-              <Home className="w-4 h-4" />
-            </Button>
+            {/* Interaction Instructions - Moved to right side to avoid overlap */}
+            <div className="absolute top-4 right-20 bg-gray-900/90 backdrop-blur-sm rounded-lg p-3 border border-cyan-500/30 max-w-xs">
+              <div className="text-xs font-semibold mb-2 text-cyan-400 uppercase tracking-wider">Interactions</div>
+              <div className="space-y-1 text-xs text-cyan-300">
+                <div>• Hover: Highlight buildings/roads</div>
+                <div>• Single Click: Toggle building selection</div>
+                <div>• Double Click: Add to visited buildings</div>
+                <div>• POI Click: Show point details</div>
+              </div>
+            </div>
+
+            {/* Tron-style corner decorations */}
+            <div className="absolute top-4 right-4 w-8 h-8 border-t-2 border-r-2 border-cyan-400/60 pointer-events-none"></div>
+            <div className="absolute bottom-4 right-4 w-8 h-8 border-b-2 border-r-2 border-cyan-400/60 pointer-events-none"></div>
           </div>
+        </Card>
 
-          {/* Map Controls - Right Side */}
-          <div className="absolute top-4 right-4 flex flex-col gap-2">
-            <Button
-              onClick={resetBearing}
-              size="sm"
-              className="bg-gray-900/90 hover:bg-gray-800 text-cyan-300 border border-cyan-500/30 backdrop-blur-sm"
-            >
-              <Navigation className="w-4 h-4" />
-            </Button>
-            <Button
-              onClick={zoomIn}
-              size="sm"
-              className="bg-gray-900/90 hover:bg-gray-800 text-cyan-300 border border-cyan-500/30 backdrop-blur-sm"
-            >
-              <Plus className="w-4 h-4" />
-            </Button>
-            <Button
-              onClick={zoomOut}
-              size="sm"
-              className="bg-gray-900/90 hover:bg-gray-800 text-cyan-300 border border-cyan-500/30 backdrop-blur-sm"
-            >
-              <Minus className="w-4 h-4" />
-            </Button>
-            <Button
-              onClick={toggleBuildings}
-              size="sm"
-              className="bg-gray-900/90 hover:bg-gray-800 text-cyan-300 border border-cyan-500/30 backdrop-blur-sm"
-            >
-              {buildingsVisible ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-            </Button>
-          </div>
+        {/* Search and Controls - Now below the map */}
+        <Card className="bg-gray-900/90 border-cyan-500/30 backdrop-blur-sm">
+          <div className="p-4">
+            <form onSubmit={handleSearch} className="space-y-3">
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-cyan-400" />
+                  <Input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search locations..."
+                    className="pl-10 bg-gray-800/50 border-cyan-500/30 text-cyan-100 placeholder-cyan-400/60 focus:border-cyan-400 focus:ring-cyan-400/20"
+                    disabled={isSearching}
+                  />
+                </div>
+                <Button
+                  type="submit"
+                  disabled={isSearching || !searchQuery.trim()}
+                  className="bg-cyan-600 hover:bg-cyan-500 text-gray-900 font-semibold"
+                >
+                  {isSearching ? <Loader2 className="w-4 h-4 animate-spin" /> : "Search"}
+                </Button>
+                {(searchQuery || searchResults.length > 0) && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={clearSearch}
+                    className="border-cyan-500/30 text-cyan-300 bg-transparent hover:bg-cyan-500/10"
+                  >
+                    Clear
+                  </Button>
+                )}
+              </div>
 
-          {/* Map Legend */}
-          <div className="absolute bottom-4 left-4 bg-gray-900/90 backdrop-blur-sm rounded-lg p-3 border border-cyan-500/30">
-            <div className="text-xs font-semibold mb-2 text-cyan-400 uppercase tracking-wider">Legend</div>
-            <div className="space-y-1 text-xs">
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 bg-green-400 rounded-full shadow-lg shadow-green-400/50"></div>
-                <span className="text-green-300">Live Events</span>
+              {/* Map View Controls */}
+              <div className="flex gap-2 flex-wrap">
+                <div className="flex gap-1">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={mapView === "streets" ? "default" : "outline"}
+                    onClick={() => setMapView("streets")}
+                    className={
+                      mapView === "streets"
+                        ? "bg-cyan-600 hover:bg-cyan-500 text-gray-900"
+                        : "border-cyan-500/30 bg-transparent text-cyan-300 hover:bg-cyan-500/10"
+                    }
+                  >
+                    Streets
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={mapView === "satellite" ? "default" : "outline"}
+                    onClick={() => setMapView("satellite")}
+                    className={
+                      mapView === "satellite"
+                        ? "bg-cyan-600 hover:bg-cyan-500 text-gray-900"
+                        : "border-cyan-500/30 bg-transparent text-cyan-300 hover:bg-cyan-500/10"
+                    }
+                  >
+                    Satellite
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={mapView === "hybrid" ? "default" : "outline"}
+                    onClick={() => setMapView("hybrid")}
+                    className={
+                      mapView === "hybrid"
+                        ? "bg-cyan-600 hover:bg-cyan-500 text-gray-900"
+                        : "border-cyan-500/30 bg-transparent text-cyan-300 hover:bg-cyan-500/10"
+                    }
+                  >
+                    Hybrid
+                  </Button>
+                </div>
+
+                <div className="flex gap-1">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={mapStyle === "2d" ? "default" : "outline"}
+                    onClick={() => setMapStyle("2d")}
+                    className={
+                      mapStyle === "2d"
+                        ? "bg-cyan-600 hover:bg-cyan-500 text-gray-900"
+                        : "border-cyan-500/30 bg-transparent text-cyan-300 hover:bg-cyan-500/10"
+                    }
+                  >
+                    <MapIcon className="w-4 h-4 mr-1" />
+                    2D
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={mapStyle === "3d" ? "default" : "outline"}
+                    onClick={() => setMapStyle("3d")}
+                    className={
+                      mapStyle === "3d"
+                        ? "bg-cyan-600 hover:bg-cyan-500 text-gray-900"
+                        : "border-cyan-500/30 bg-transparent text-cyan-300 hover:bg-cyan-500/10"
+                    }
+                  >
+                    <Layers className="w-4 h-4 mr-1" />
+                    3D
+                  </Button>
+                </div>
+
+                {selectedBuildings.length > 0 && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={clearSelectedBuildings}
+                    className="border-red-500/30 text-red-300 bg-transparent hover:bg-red-500/10"
+                  >
+                    Reset ({selectedBuildings.length}) Visited Buildings
+                  </Button>
+                )}
+
+                {buildingDetails.length > 0 && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={resetVisitedBuildings}
+                    className="border-red-500/30 text-red-300 bg-transparent hover:bg-red-500/10"
+                  >
+                    Reset ({buildingDetails.length}) Visited Buildings
+                  </Button>
+                )}
               </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 bg-blue-400 rounded-full shadow-lg shadow-blue-400/50"></div>
-                <span className="text-blue-300">Upcoming</span>
+
+              {/* Interaction Tools */}
+              <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={selectedTool === "address" ? "default" : "outline"}
+                  onClick={() => selectTool("address")}
+                  className={`flex flex-col items-center p-3 h-auto ${
+                    selectedTool === "address"
+                      ? "bg-blue-600 hover:bg-blue-500 text-white"
+                      : "border-cyan-500/30 bg-transparent text-cyan-300 hover:bg-cyan-500/10"
+                  }`}
+                >
+                  <MapPin className="w-5 h-5 mb-1" />
+                  <span className="text-xs">Create Takeover</span>
+                </Button>
+
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={selectedTool === "building" ? "default" : "outline"}
+                  onClick={() => selectTool("building")}
+                  className={`flex flex-col items-center p-3 h-auto ${
+                    selectedTool === "building"
+                      ? "bg-green-600 hover:bg-green-500 text-white"
+                      : "border-cyan-500/30 bg-transparent text-cyan-300 hover:bg-cyan-500/10"
+                  }`}
+                >
+                  <Building className="w-5 h-5 mb-1" />
+                  <span className="text-xs">Go Home</span>
+                </Button>
+
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={selectedTool === "road" ? "default" : "outline"}
+                  onClick={() => selectTool("road")}
+                  className={`flex flex-col items-center p-3 h-auto ${
+                    selectedTool === "road"
+                      ? "bg-orange-600 hover:bg-orange-500 text-white"
+                      : "border-cyan-500/30 bg-transparent text-cyan-300 hover:bg-cyan-500/10"
+                  }`}
+                >
+                  <Road className="w-5 h-5 mb-1" />
+                  <span className="text-xs">Rendezvous</span>
+                </Button>
+
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={selectedTool === "speed" ? "default" : "outline"}
+                  onClick={() => selectTool("speed")}
+                  className={`flex flex-col items-center p-3 h-auto ${
+                    selectedTool === "speed"
+                      ? "bg-red-600 hover:bg-red-500 text-white"
+                      : "border-cyan-500/30 bg-transparent text-cyan-300 hover:bg-cyan-500/10"
+                  }`}
+                >
+                  <Gauge className="w-5 h-5 mb-1" />
+                  <span className="text-xs">Get Gas</span>
+                </Button>
+
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={selectedTool === "incident" ? "default" : "outline"}
+                  onClick={() => selectTool("incident")}
+                  className={`flex flex-col items-center p-3 h-auto ${
+                    selectedTool === "incident"
+                      ? "bg-yellow-600 hover:bg-yellow-500 text-white"
+                      : "border-cyan-500/30 bg-transparent text-cyan-300 hover:bg-cyan-500/10"
+                  }`}
+                >
+                  <AlertTriangle className="w-5 h-5 mb-1" />
+                  <span className="text-xs">Police or Heli</span>
+                </Button>
+
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={selectedTool === "clearance" ? "default" : "outline"}
+                  onClick={() => selectTool("clearance")}
+                  className={`flex flex-col items-center p-3 h-auto ${
+                    selectedTool === "clearance"
+                      ? "bg-purple-600 hover:bg-purple-500 text-white"
+                      : "border-cyan-500/30 bg-transparent text-cyan-300 hover:bg-cyan-500/10"
+                  }`}
+                >
+                  <Shield className="w-5 h-5 mb-1" />
+                  <span className="text-xs">Add Stop</span>
+                </Button>
               </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 bg-orange-400 rounded-full shadow-lg shadow-orange-400/50"></div>
-                <span className="text-orange-300">Scheduled</span>
-              </div>
-              {userLocation && (
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 bg-cyan-400 rounded-full animate-pulse shadow-lg shadow-cyan-400/50"></div>
-                  <span className="text-cyan-300">Your Location</span>
+
+              {/* Search Error */}
+              {searchError && (
+                <div className="flex items-center gap-2 text-red-400 text-sm">
+                  <AlertCircle className="w-4 h-4" />
+                  <span>{searchError}</span>
                 </div>
               )}
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 bg-yellow-400 rounded shadow-lg shadow-yellow-400/50"></div>
-                <span className="text-yellow-300">Hover Highlight</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 bg-cyan-400 rounded shadow-lg shadow-cyan-400/50"></div>
-                <span className="text-cyan-300">Selected ({selectedBuildings.length})</span>
-              </div>
-            </div>
-          </div>
 
-          {/* Interaction Instructions - Moved to right side to avoid overlap */}
-          <div className="absolute top-4 right-20 bg-gray-900/90 backdrop-blur-sm rounded-lg p-3 border border-cyan-500/30 max-w-xs">
-            <div className="text-xs font-semibold mb-2 text-cyan-400 uppercase tracking-wider">Interactions</div>
-            <div className="space-y-1 text-xs text-cyan-300">
-              <div>• Hover: Highlight buildings/roads</div>
-              <div>• Single Click: Toggle building selection</div>
-              <div>• Double Click: View detailed info</div>
-              <div>• POI Click: Show point details</div>
-            </div>
-          </div>
-
-          {/* Tron-style corner decorations */}
-          <div className="absolute top-4 right-4 w-8 h-8 border-t-2 border-r-2 border-cyan-400/60 pointer-events-none"></div>
-          <div className="absolute bottom-4 right-4 w-8 h-8 border-b-2 border-r-2 border-cyan-400/60 pointer-events-none"></div>
-        </div>
-      </Card>
-
-      {/* Search and Controls - Now below the map */}
-      <Card className="bg-gray-900/90 border-cyan-500/30 backdrop-blur-sm">
-        <div className="p-4">
-          <form onSubmit={handleSearch} className="space-y-3">
-            <div className="flex gap-2">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-cyan-400" />
-                <Input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search locations..."
-                  className="pl-10 bg-gray-800/50 border-cyan-500/30 text-cyan-100 placeholder-cyan-400/60 focus:border-cyan-400 focus:ring-cyan-400/20"
-                  disabled={isSearching}
-                />
-              </div>
-              <Button
-                type="submit"
-                disabled={isSearching || !searchQuery.trim()}
-                className="bg-cyan-600 hover:bg-cyan-500 text-gray-900 font-semibold"
-              >
-                {isSearching ? <Loader2 className="w-4 h-4 animate-spin" /> : "Search"}
-              </Button>
-              {(searchQuery || searchResults.length > 0) && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={clearSearch}
-                  className="border-cyan-500/30 text-cyan-300 bg-transparent hover:bg-cyan-500/10"
-                >
-                  Clear
-                </Button>
+              {/* Search Results Count */}
+              {searchResults.length > 0 && (
+                <div className="text-sm text-cyan-400">
+                  Found {searchResults.length} result{searchResults.length !== 1 ? "s" : ""}
+                </div>
               )}
-            </div>
 
-            {/* Map View Controls */}
-            <div className="flex gap-2 flex-wrap">
-              <div className="flex gap-1">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={mapView === "streets" ? "default" : "outline"}
-                  onClick={() => setMapView("streets")}
-                  className={
-                    mapView === "streets"
-                      ? "bg-cyan-600 hover:bg-cyan-500 text-gray-900"
-                      : "border-cyan-500/30 bg-transparent text-cyan-300 hover:bg-cyan-500/10"
-                  }
-                >
-                  Streets
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={mapView === "satellite" ? "default" : "outline"}
-                  onClick={() => setMapView("satellite")}
-                  className={
-                    mapView === "satellite"
-                      ? "bg-cyan-600 hover:bg-cyan-500 text-gray-900"
-                      : "border-cyan-500/30 bg-transparent text-cyan-300 hover:bg-cyan-500/10"
-                  }
-                >
-                  Satellite
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={mapView === "hybrid" ? "default" : "outline"}
-                  onClick={() => setMapView("hybrid")}
-                  className={
-                    mapView === "hybrid"
-                      ? "bg-cyan-600 hover:bg-cyan-500 text-gray-900"
-                      : "border-cyan-500/30 bg-transparent text-cyan-300 hover:bg-cyan-500/10"
-                  }
-                >
-                  Hybrid
-                </Button>
-              </div>
-
-              <div className="flex gap-1">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={mapStyle === "2d" ? "default" : "outline"}
-                  onClick={() => setMapStyle("2d")}
-                  className={
-                    mapStyle === "2d"
-                      ? "bg-cyan-600 hover:bg-cyan-500 text-gray-900"
-                      : "border-cyan-500/30 bg-transparent text-cyan-300 hover:bg-cyan-500/10"
-                  }
-                >
-                  <MapIcon className="w-4 h-4 mr-1" />
-                  2D
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={mapStyle === "3d" ? "default" : "outline"}
-                  onClick={() => setMapStyle("3d")}
-                  className={
-                    mapStyle === "3d"
-                      ? "bg-cyan-600 hover:bg-cyan-500 text-gray-900"
-                      : "border-cyan-500/30 bg-transparent text-cyan-300 hover:bg-cyan-500/10"
-                  }
-                >
-                  <Layers className="w-4 h-4 mr-1" />
-                  3D
-                </Button>
-              </div>
-
-              {selectedBuildings.length > 0 && (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={clearSelectedBuildings}
-                  className="border-red-500/30 text-red-300 bg-transparent hover:bg-red-500/10"
-                >
-                  Clear Selected ({selectedBuildings.length})
-                </Button>
+              {currentViewingLabel && (
+                <div className="text-sm text-yellow-400 bg-yellow-500/10 p-2 rounded">
+                  <strong>Viewing:</strong> {currentViewingLabel}
+                </div>
               )}
-            </div>
 
-            {/* Interaction Tools */}
-            <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
-              <Button
-                type="button"
-                size="sm"
-                variant={selectedTool === "address" ? "default" : "outline"}
-                onClick={() => selectTool("address")}
-                className={`flex flex-col items-center p-3 h-auto ${
-                  selectedTool === "address"
-                    ? "bg-blue-600 hover:bg-blue-500 text-white"
-                    : "border-cyan-500/30 bg-transparent text-cyan-300 hover:bg-cyan-500/10"
-                }`}
-              >
-                <MapPin className="w-5 h-5 mb-1" />
-                <span className="text-xs">Create Takeover</span>
-              </Button>
-
-              <Button
-                type="button"
-                size="sm"
-                variant={selectedTool === "building" ? "default" : "outline"}
-                onClick={() => selectTool("building")}
-                className={`flex flex-col items-center p-3 h-auto ${
-                  selectedTool === "building"
-                    ? "bg-green-600 hover:bg-green-500 text-white"
-                    : "border-cyan-500/30 bg-transparent text-cyan-300 hover:bg-cyan-500/10"
-                }`}
-              >
-                <Building className="w-5 h-5 mb-1" />
-                <span className="text-xs">Go Home</span>
-              </Button>
-
-              <Button
-                type="button"
-                size="sm"
-                variant={selectedTool === "road" ? "default" : "outline"}
-                onClick={() => selectTool("road")}
-                className={`flex flex-col items-center p-3 h-auto ${
-                  selectedTool === "road"
-                    ? "bg-orange-600 hover:bg-orange-500 text-white"
-                    : "border-cyan-500/30 bg-transparent text-cyan-300 hover:bg-cyan-500/10"
-                }`}
-              >
-                <Road className="w-5 h-5 mb-1" />
-                <span className="text-xs">Rendezvous</span>
-              </Button>
-
-              <Button
-                type="button"
-                size="sm"
-                variant={selectedTool === "speed" ? "default" : "outline"}
-                onClick={() => selectTool("speed")}
-                className={`flex flex-col items-center p-3 h-auto ${
-                  selectedTool === "speed"
-                    ? "bg-red-600 hover:bg-red-500 text-white"
-                    : "border-cyan-500/30 bg-transparent text-cyan-300 hover:bg-cyan-500/10"
-                }`}
-              >
-                <Gauge className="w-5 h-5 mb-1" />
-                <span className="text-xs">Get Gas</span>
-              </Button>
-
-              <Button
-                type="button"
-                size="sm"
-                variant={selectedTool === "incident" ? "default" : "outline"}
-                onClick={() => selectTool("incident")}
-                className={`flex flex-col items-center p-3 h-auto ${
-                  selectedTool === "incident"
-                    ? "bg-yellow-600 hover:bg-yellow-500 text-white"
-                    : "border-cyan-500/30 bg-transparent text-cyan-300 hover:bg-cyan-500/10"
-                }`}
-              >
-                <AlertTriangle className="w-5 h-5 mb-1" />
-                <span className="text-xs">Police or Heli</span>
-              </Button>
-
-              <Button
-                type="button"
-                size="sm"
-                variant={selectedTool === "clearance" ? "default" : "outline"}
-                onClick={() => selectTool("clearance")}
-                className={`flex flex-col items-center p-3 h-auto ${
-                  selectedTool === "clearance"
-                    ? "bg-purple-600 hover:bg-purple-500 text-white"
-                    : "border-cyan-500/30 bg-transparent text-cyan-300 hover:bg-cyan-500/10"
-                }`}
-              >
-                <Shield className="w-5 h-5 mb-1" />
-                <span className="text-xs">Add Stop</span>
-              </Button>
-            </div>
-
-            {/* Search Error */}
-            {searchError && (
-              <div className="flex items-center gap-2 text-red-400 text-sm">
-                <AlertCircle className="w-4 h-4" />
-                <span>{searchError}</span>
-              </div>
-            )}
-
-            {/* Search Results Count */}
-            {searchResults.length > 0 && (
-              <div className="text-sm text-cyan-400">
-                Found {searchResults.length} result{searchResults.length !== 1 ? "s" : ""}
-              </div>
-            )}
-
-            {hoveredLabel && (
-              <div className="text-sm text-yellow-400 bg-yellow-500/10 p-2 rounded">
-                <strong>Hovering:</strong> {hoveredLabel}
-              </div>
-            )}
-
-            {/* Selected Tool Info */}
-            {selectedTool && (
-              <div className="text-sm text-cyan-400 bg-cyan-500/10 p-2 rounded">
-                <strong>{selectedTool.charAt(0).toUpperCase() + selectedTool.slice(1)} Tool Active:</strong>{" "}
-                {selectedTool === "building" && "Hover to highlight • Click to select • Double-click for details"}
-                {selectedTool === "address" && "Click on the map to create a takeover location"}
-                {selectedTool === "road" && "Hover to highlight • Double-click for road details"}
-                {selectedTool === "speed" && "Click to find gas stations"}
-                {selectedTool === "incident" && "Click to report police or helicopter activity"}
-                {selectedTool === "clearance" && "Click to add a stop location"}
-              </div>
-            )}
-          </form>
-        </div>
-      </Card>
+              {/* Selected Tool Info */}
+              {selectedTool && (
+                <div className="text-sm text-cyan-400 bg-cyan-500/10 p-2 rounded">
+                  <strong>{selectedTool.charAt(0).toUpperCase() + selectedTool.slice(1)} Tool Active:</strong>{" "}
+                  {selectedTool === "building" && "Hover to highlight • Click to select • Double-click for details"}
+                  {selectedTool === "address" && "Click on the map to create a takeover location"}
+                  {selectedTool === "road" && "Hover to highlight • Double-click for road details"}
+                  {selectedTool === "speed" && "Click to find gas stations"}
+                  {selectedTool === "incident" && "Click to report police or helicopter activity"}
+                  {selectedTool === "clearance" && "Click to view clearance information"}
+                </div>
+              )}
+            </form>
+          </div>
+        </Card>
+      </div>
     </div>
   )
 }
