@@ -624,7 +624,103 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
 
   return (
     <div className="space-y-4">
-      {/* Search and Controls */}
+      {/* Map Container */}
+      <Card className="bg-gray-900 border-cyan-500/30 overflow-hidden">
+        <div className="relative h-96">
+          <div ref={mapContainer} className="w-full h-full" style={{ minHeight: "384px" }} />
+
+          {isLoading && (
+            <div className="absolute inset-0 bg-gray-900/90 flex items-center justify-center backdrop-blur-sm">
+              <div className="text-center">
+                <Loader2 className="w-8 h-8 animate-spin mx-auto mb-2 text-cyan-400" />
+                <p className="text-cyan-300">Loading enhanced map interface...</p>
+              </div>
+            </div>
+          )}
+
+          {/* Map Controls - Right Side */}
+          <div className="absolute top-4 right-4 flex flex-col gap-2">
+            <Button
+              onClick={resetBearing}
+              size="sm"
+              className="bg-gray-900/90 hover:bg-gray-800 text-cyan-300 border border-cyan-500/30 backdrop-blur-sm"
+            >
+              <Navigation className="w-4 h-4" />
+            </Button>
+            <Button
+              onClick={zoomIn}
+              size="sm"
+              className="bg-gray-900/90 hover:bg-gray-800 text-cyan-300 border border-cyan-500/30 backdrop-blur-sm"
+            >
+              <Plus className="w-4 h-4" />
+            </Button>
+            <Button
+              onClick={zoomOut}
+              size="sm"
+              className="bg-gray-900/90 hover:bg-gray-800 text-cyan-300 border border-cyan-500/30 backdrop-blur-sm"
+            >
+              <Minus className="w-4 h-4" />
+            </Button>
+            <Button
+              onClick={toggleBuildings}
+              size="sm"
+              className="bg-gray-900/90 hover:bg-gray-800 text-cyan-300 border border-cyan-500/30 backdrop-blur-sm"
+            >
+              {buildingsVisible ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            </Button>
+          </div>
+
+          {/* Map Legend */}
+          <div className="absolute bottom-4 left-4 bg-gray-900/90 backdrop-blur-sm rounded-lg p-3 border border-cyan-500/30">
+            <div className="text-xs font-semibold mb-2 text-cyan-400 uppercase tracking-wider">Legend</div>
+            <div className="space-y-1 text-xs">
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 bg-green-400 rounded-full shadow-lg shadow-green-400/50"></div>
+                <span className="text-green-300">Live Events</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 bg-blue-400 rounded-full shadow-lg shadow-blue-400/50"></div>
+                <span className="text-blue-300">Upcoming</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 bg-orange-400 rounded-full shadow-lg shadow-orange-400/50"></div>
+                <span className="text-orange-300">Scheduled</span>
+              </div>
+              {userLocation && (
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 bg-cyan-400 rounded-full animate-pulse shadow-lg shadow-cyan-400/50"></div>
+                  <span className="text-cyan-300">Your Location</span>
+                </div>
+              )}
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 bg-yellow-400 rounded shadow-lg shadow-yellow-400/50"></div>
+                <span className="text-yellow-300">Hover Highlight</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 bg-cyan-400 rounded shadow-lg shadow-cyan-400/50"></div>
+                <span className="text-cyan-300">Selected ({selectedBuildings.length})</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Interaction Instructions */}
+          <div className="absolute top-4 left-4 bg-gray-900/90 backdrop-blur-sm rounded-lg p-3 border border-cyan-500/30 max-w-xs">
+            <div className="text-xs font-semibold mb-2 text-cyan-400 uppercase tracking-wider">Interactions</div>
+            <div className="space-y-1 text-xs text-cyan-300">
+              <div>• Hover: Highlight buildings/roads</div>
+              <div>• Single Click: Toggle building selection</div>
+              <div>• Double Click: View detailed info</div>
+              <div>• POI Click: Show point details</div>
+            </div>
+          </div>
+
+          {/* Tron-style corner decorations */}
+          <div className="absolute top-4 right-4 w-8 h-8 border-t-2 border-r-2 border-cyan-400/60 pointer-events-none"></div>
+          <div className="absolute bottom-4 right-4 w-8 h-8 border-b-2 border-r-2 border-cyan-400/60 pointer-events-none"></div>
+        </div>
+      </Card>
+
+      {/* Search and Controls - Now below the map */}
       <Card className="bg-gray-900/90 border-cyan-500/30 backdrop-blur-sm">
         <div className="p-4">
           <form onSubmit={handleSearch} className="space-y-3">
@@ -761,7 +857,8 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
                 }`}
               >
                 <MapPin className="w-5 h-5 mb-1" />
-                <span className="text-xs">CREATE TAKEOVERTAKEOVETAKET       </Button>
+                <span className="text-xs">Address</span>
+              </Button>
 
               <Button
                 type="button"
@@ -778,7 +875,8 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
                 <span className="text-xs">Building</span>
               </Button>
 
-              <Bufind gaspe="button"
+              <Button
+                type="button"
                 size="sm"
                 variant={selectedTool === "road" ? "default" : "outline"}
                 onClick={() => selectTool("road")}
@@ -872,102 +970,6 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
               </div>
             )}
           </form>
-        </div>
-      </Card>
-
-      {/* Map Container */}
-      <Card className="bg-gray-900 border-cyan-500/30 overflow-hidden">
-        <div className="relative h-96">
-          <div ref={mapContainer} className="w-full h-full" style={{ minHeight: "384px" }} />
-
-          {isLoading && (
-            <div className="absolute inset-0 bg-gray-900/90 flex items-center justify-center backdrop-blur-sm">
-              <div className="text-center">
-                <Loader2 className="w-8 h-8 animate-spin mx-auto mb-2 text-cyan-400" />
-                <p className="text-cyan-300">Loading enhanced map interface...</p>
-              </div>
-            </div>
-          )}
-
-          {/* Map Controls - Right Side */}
-          <div className="absolute top-4 right-4 flex flex-col gap-2">
-            <Button
-              onClick={resetBearing}
-              size="sm"
-              className="bg-gray-900/90 hover:bg-gray-800 text-cyan-300 border border-cyan-500/30 backdrop-blur-sm"
-            >
-              <Navigation className="w-4 h-4" />
-            </Button>
-            <Button
-              onClick={zoomIn}
-              size="sm"
-              className="bg-gray-900/90 hover:bg-gray-800 text-cyan-300 border border-cyan-500/30 backdrop-blur-sm"
-            >
-              <Plus className="w-4 h-4" />
-            </Button>
-            <Button
-              onClick={zoomOut}
-              size="sm"
-              className="bg-gray-900/90 hover:bg-gray-800 text-cyan-300 border border-cyan-500/30 backdrop-blur-sm"
-            >
-              <Minus className="w-4 h-4" />
-            </Button>
-            <Button
-              onClick={toggleBuildings}
-              size="sm"
-              className="bg-gray-900/90 hover:bg-gray-800 text-cyan-300 border border-cyan-500/30 backdrop-blur-sm"
-            >
-              {buildingsVisible ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-            </Button>
-          </div>
-
-          {/* Map Legend */}
-          <div className="absolute bottom-4 left-4 bg-gray-900/90 backdrop-blur-sm rounded-lg p-3 border border-cyan-500/30">
-            <div className="text-xs font-semibold mb-2 text-cyan-400 uppercase tracking-wider">Legend</div>
-            <div className="space-y-1 text-xs">
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 bg-green-400 rounded-full shadow-lg shadow-green-400/50"></div>
-                <span className="text-green-300">Live Events</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 bg-blue-400 rounded-full shadow-lg shadow-blue-400/50"></div>
-                <span className="text-blue-300">Upcoming</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 bg-orange-400 rounded-full shadow-lg shadow-orange-400/50"></div>
-                <span className="text-orange-300">Scheduled</span>
-              </div>
-              {userLocation && (
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 bg-cyan-400 rounded-full animate-pulse shadow-lg shadow-cyan-400/50"></div>
-                  <span className="text-cyan-300">Your Location</span>
-                </div>
-              )}
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 bg-yellow-400 rounded shadow-lg shadow-yellow-400/50"></div>
-                <span className="text-yellow-300">Hover Highlight</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 bg-cyan-400 rounded shadow-lg shadow-cyan-400/50"></div>
-                <span className="text-cyan-300">Selected ({selectedBuildings.length})</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Interaction Instructions */}
-          <div className="absolute top-4 left-4 bg-gray-900/90 backdrop-blur-sm rounded-lg p-3 border border-cyan-500/30 max-w-xs">
-            <div className="text-xs font-semibold mb-2 text-cyan-400 uppercase tracking-wider">Interactions</div>
-            <div className="space-y-1 text-xs text-cyan-300">
-              <div>• Hover: Highlight buildings/roads</div>
-              <div>• Single Click: Toggle building selection</div>
-              <div>• Double Click: View detailed info</div>
-              <div>• POI Click: Show point details</div>
-            </div>
-          </div>
-
-          {/* Tron-style corner decorations */}
-          <div className="absolute top-4 right-4 w-8 h-8 border-t-2 border-r-2 border-cyan-400/60 pointer-events-none"></div>
-          <div className="absolute bottom-4 right-4 w-8 h-8 border-b-2 border-r-2 border-cyan-400/60 pointer-events-none"></div>
         </div>
       </Card>
     </div>
