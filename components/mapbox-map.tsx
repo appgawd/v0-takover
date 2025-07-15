@@ -761,8 +761,7 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
                 }`}
               >
                 <MapPin className="w-5 h-5 mb-1" />
-                <span className="text-xs">Address</span>
-              </Button>
+                <span className="text-xs">CREATE TAKEOVERTAKEOVETAKET       </Button>
 
               <Button
                 type="button"
