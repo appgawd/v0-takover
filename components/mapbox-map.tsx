@@ -22,6 +22,8 @@ import {
   Navigation,
   Eye,
   EyeOff,
+  Radio,
+  Home,
 } from "lucide-react"
 
 interface Event {
@@ -611,6 +613,16 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
     setSelectedBuildings([])
   }
 
+  const handlePoliceRadio = () => {
+    // Handle police radio functionality
+    console.log("Opening police radio...")
+  }
+
+  const handleNavigateHome = () => {
+    // Handle navigation to homepage
+    window.location.href = "/"
+  }
+
   if (loadError) {
     return (
       <Card className="bg-red-900 border-red-700">
@@ -637,6 +649,26 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
               </div>
             </div>
           )}
+
+          {/* Top Left Controls - Police Radio and Home */}
+          <div className="absolute top-4 left-4 flex gap-2">
+            <Button
+              onClick={handlePoliceRadio}
+              size="sm"
+              className="bg-gray-900/90 hover:bg-gray-800 text-cyan-300 border border-cyan-500/30 backdrop-blur-sm"
+              title="Open Police Radio"
+            >
+              <Radio className="w-4 h-4" />
+            </Button>
+            <Button
+              onClick={handleNavigateHome}
+              size="sm"
+              className="bg-gray-900/90 hover:bg-gray-800 text-cyan-300 border border-cyan-500/30 backdrop-blur-sm"
+              title="Navigate to Homepage"
+            >
+              <Home className="w-4 h-4" />
+            </Button>
+          </div>
 
           {/* Map Controls - Right Side */}
           <div className="absolute top-4 right-4 flex flex-col gap-2">
@@ -703,8 +735,8 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
             </div>
           </div>
 
-          {/* Interaction Instructions */}
-          <div className="absolute top-4 left-4 bg-gray-900/90 backdrop-blur-sm rounded-lg p-3 border border-cyan-500/30 max-w-xs">
+          {/* Interaction Instructions - Moved to right side to avoid overlap */}
+          <div className="absolute top-4 right-20 bg-gray-900/90 backdrop-blur-sm rounded-lg p-3 border border-cyan-500/30 max-w-xs">
             <div className="text-xs font-semibold mb-2 text-cyan-400 uppercase tracking-wider">Interactions</div>
             <div className="space-y-1 text-xs text-cyan-300">
               <div>• Hover: Highlight buildings/roads</div>
@@ -857,7 +889,7 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
                 }`}
               >
                 <MapPin className="w-5 h-5 mb-1" />
-                <span className="text-xs">Address</span>
+                <span className="text-xs">Create Takeover</span>
               </Button>
 
               <Button
@@ -872,7 +904,7 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
                 }`}
               >
                 <Building className="w-5 h-5 mb-1" />
-                <span className="text-xs">Building</span>
+                <span className="text-xs">Go Home</span>
               </Button>
 
               <Button
@@ -887,7 +919,7 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
                 }`}
               >
                 <Road className="w-5 h-5 mb-1" />
-                <span className="text-xs">Road</span>
+                <span className="text-xs">Rendezvous</span>
               </Button>
 
               <Button
@@ -902,7 +934,7 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
                 }`}
               >
                 <Gauge className="w-5 h-5 mb-1" />
-                <span className="text-xs">Speed</span>
+                <span className="text-xs">Get Gas</span>
               </Button>
 
               <Button
@@ -917,7 +949,7 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
                 }`}
               >
                 <AlertTriangle className="w-5 h-5 mb-1" />
-                <span className="text-xs">Incident</span>
+                <span className="text-xs">Police or Heli</span>
               </Button>
 
               <Button
@@ -932,7 +964,7 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
                 }`}
               >
                 <Shield className="w-5 h-5 mb-1" />
-                <span className="text-xs">Clearance</span>
+                <span className="text-xs">Add Stop</span>
               </Button>
             </div>
 
@@ -962,11 +994,11 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
               <div className="text-sm text-cyan-400 bg-cyan-500/10 p-2 rounded">
                 <strong>{selectedTool.charAt(0).toUpperCase() + selectedTool.slice(1)} Tool Active:</strong>{" "}
                 {selectedTool === "building" && "Hover to highlight • Click to select • Double-click for details"}
-                {selectedTool === "address" && "Click on the map to get address information"}
+                {selectedTool === "address" && "Click on the map to create a takeover location"}
                 {selectedTool === "road" && "Hover to highlight • Double-click for road details"}
-                {selectedTool === "speed" && "Click to view speed limit information"}
-                {selectedTool === "incident" && "Click to report or view incidents"}
-                {selectedTool === "clearance" && "Click to view clearance information"}
+                {selectedTool === "speed" && "Click to find gas stations"}
+                {selectedTool === "incident" && "Click to report police or helicopter activity"}
+                {selectedTool === "clearance" && "Click to add a stop location"}
               </div>
             )}
           </form>
