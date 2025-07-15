@@ -23,7 +23,7 @@ import {
   Eye,
   EyeOff,
   Radio,
-  Home,
+  ArrowLeft,
   X,
 } from "lucide-react"
 
@@ -58,7 +58,6 @@ interface BuildingDetails {
   levels: string
   address: string
   coordinates: [number, number]
-  order: number
 }
 
 // ────────────────────────────────────────────────────────────────────────────────
@@ -147,28 +146,21 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
     }
   }
 
-  const addBuildingMarker = (coordinates: [number, number], order: number) => {
+  const addBuildingMarker = (coordinates: [number, number]) => {
     if (!map.current || !mapboxglRef.current) return
 
-    // Create a custom marker element
+    // Create a simple pin marker element
     const markerElement = document.createElement("div")
     markerElement.className = "building-marker"
     markerElement.style.cssText = `
-      width: 24px;
-      height: 24px;
+      width: 12px;
+      height: 12px;
       background: #00ffff;
       border: 2px solid #ffffff;
       border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 12px;
-      font-weight: bold;
-      color: #000;
       cursor: pointer;
       box-shadow: 0 2px 8px rgba(0, 255, 255, 0.5);
     `
-    markerElement.textContent = order.toString()
 
     const marker = new mapboxglRef.current.Marker(markerElement).setLngLat(coordinates).addTo(map.current)
 
@@ -179,6 +171,53 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
   const clearBuildingMarkers = () => {
     buildingMarkersRef.current.forEach((marker) => marker.remove())
     buildingMarkersRef.current = []
+  }
+
+  const createCarMarker = (eventType: string, status: string) => {
+    const markerElement = document.createElement("div")
+    markerElement.className = "car-marker"
+
+    // Different car models based on event type
+    let carEmoji = "🚗"
+    switch (eventType) {
+      case "drift":
+        carEmoji = "🏎️"
+        break
+      case "cruise":
+        carEmoji = "🚙"
+        break
+      case "meet":
+        carEmoji = "🚗"
+        break
+      case "run":
+        carEmoji = "🏁"
+        break
+      case "show":
+        carEmoji = "🚘"
+        break
+      default:
+        carEmoji = "🚗"
+    }
+
+    const color = status === "live" ? "#00ff00" : status === "upcoming" ? "#0099ff" : "#ff6600"
+
+    markerElement.style.cssText = `
+      font-size: 24px;
+      cursor: pointer;
+      filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5));
+      transition: transform 0.2s ease;
+    `
+    markerElement.innerHTML = carEmoji
+
+    markerElement.addEventListener("mouseenter", () => {
+      markerElement.style.transform = "scale(1.2)"
+    })
+
+    markerElement.addEventListener("mouseleave", () => {
+      markerElement.style.transform = "scale(1)"
+    })
+
+    return markerElement
   }
 
   const addInteractionLayers = () => {
@@ -313,14 +352,12 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
               .addTo(map.current)
           }
 
-          // Add event markers
+          // Add event markers with car models
           events.forEach((event) => {
             const color = event.status === "live" ? "#00ff00" : event.status === "upcoming" ? "#0099ff" : "#ff6600"
+            const carMarkerElement = createCarMarker(event.type, event.status)
 
-            const marker = new mapboxglRef.current.Marker({
-              color: color,
-              scale: 1.5,
-            })
+            const marker = new mapboxglRef.current.Marker(carMarkerElement)
               .setLngLat(event.coordinates)
               .setPopup(
                 new mapboxglRef.current.Popup().setHTML(`
@@ -343,7 +380,7 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
               )
               .addTo(map.current)
 
-            marker.getElement().addEventListener("click", () => {
+            carMarkerElement.addEventListener("click", () => {
               onEventSelect(event)
             })
           })
@@ -405,11 +442,40 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
               clearTimeout(clickTimeout.current)
               clickTimeout.current = null
 
-              // Double click - add to building details list
+              // Double click - show building details popup and add marker
               const buildingName =
                 feature.properties.name || feature.properties.class || feature.properties.type || "Building"
               const buildingType = feature.properties.type || feature.properties.class || "Building"
 
+              // Show popup with building details
+              new mapboxglRef.current.Popup()
+                .setLngLat(e.lngLat)
+                .setHTML(`
+                <div style="color: #00ffff; background: rgba(10, 10, 15, 0.9); padding: 15px; border-radius: 8px; max-width: 300px; backdrop-filter: blur(10px);">
+                  <h3 style="margin: 0 0 8px 0; color: #00ffff;">🏢 ${buildingName}</h3>
+                  <div style="margin-bottom: 8px;">
+                    <strong>Type:</strong> ${buildingType}
+                  </div>
+                  <div style="margin-bottom: 8px;">
+                    <strong>Height:</strong> ${feature.properties.height || "Unknown"}
+                  </div>
+                  <div style="margin-bottom: 8px;">
+                    <strong>Levels:</strong> ${feature.properties.levels || "Unknown"}
+                  </div>
+                  <div style="margin-bottom: 8px;">
+                    <strong>Address:</strong> ${feature.properties.address || "Not available"}
+                  </div>
+                  <div style="font-size: 12px; color: #888; margin-top: 10px;">
+                    Double-click to view details • Single-click to select
+                  </div>
+                </div>
+              `)
+                .addTo(map.current)
+
+              // Add a simple pin marker
+              addBuildingMarker([e.lngLat.lng, e.lngLat.lat])
+
+              // Add to building details list
               const newBuilding: BuildingDetails = {
                 id: featureId,
                 name: buildingName,
@@ -418,14 +484,11 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
                 levels: feature.properties.levels || "Unknown",
                 address: feature.properties.address || "Not available",
                 coordinates: [e.lngLat.lng, e.lngLat.lat],
-                order: buildingDetails.length + 1,
               }
 
               setBuildingDetails((prev) => {
                 const exists = prev.find((b) => b.id === featureId)
                 if (!exists) {
-                  // Add marker to map
-                  addBuildingMarker([e.lngLat.lng, e.lngLat.lat], newBuilding.order)
                   return [...prev, newBuilding]
                 }
                 return prev
@@ -567,8 +630,8 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
       addInteractionLayers()
       updateSelectedBuildingsFilter()
       // Re-add building markers after style change
-      buildingDetails.forEach((building, index) => {
-        addBuildingMarker(building.coordinates, building.order)
+      buildingDetails.forEach((building) => {
+        addBuildingMarker(building.coordinates)
       })
     })
   }, [mapView, buildingsVisible, selectedBuildings, buildingDetails]) // Added buildingsVisible and selectedBuildings to dependencies
@@ -722,11 +785,8 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
               {buildingDetails.map((building) => (
                 <div key={building.id} className="bg-gray-800/50 rounded-lg p-3 border border-cyan-500/20">
                   <div className="flex items-start justify-between">
-                    <div className="flex items-center gap-2 mb-2">
-                      <div className="w-6 h-6 bg-cyan-400 rounded-full flex items-center justify-center text-xs font-bold text-black">
-                        {building.order}
-                      </div>
-                      <h4 className="font-semibold text-cyan-300 text-sm">{building.name}</h4>
+                    <div className="flex-1">
+                      <h4 className="font-semibold text-cyan-300 text-sm mb-2">{building.name}</h4>
                     </div>
                     <Button
                       onClick={() => removeBuildingDetail(building.id)}
@@ -790,7 +850,7 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
                 className="bg-gray-900/90 hover:bg-gray-800 text-cyan-300 border border-cyan-500/30 backdrop-blur-sm"
                 title="Navigate to Homepage"
               >
-                <Home className="w-4 h-4" />
+                <ArrowLeft className="w-4 h-4" />
               </Button>
             </div>
 
@@ -831,15 +891,15 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
               <div className="text-xs font-semibold mb-2 text-cyan-400 uppercase tracking-wider">Legend</div>
               <div className="space-y-1 text-xs">
                 <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 bg-green-400 rounded-full shadow-lg shadow-green-400/50"></div>
+                  <span className="text-lg">🏎️</span>
                   <span className="text-green-300">Live Events</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 bg-blue-400 rounded-full shadow-lg shadow-blue-400/50"></div>
+                  <span className="text-lg">🚙</span>
                   <span className="text-blue-300">Upcoming</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 bg-orange-400 rounded-full shadow-lg shadow-orange-400/50"></div>
+                  <span className="text-lg">🚗</span>
                   <span className="text-orange-300">Scheduled</span>
                 </div>
                 {userLocation && (
@@ -1000,7 +1060,7 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
                     onClick={clearSelectedBuildings}
                     className="border-red-500/30 text-red-300 bg-transparent hover:bg-red-500/10"
                   >
-                    Reset ({selectedBuildings.length}) Visited Buildings
+                    Reset ({selectedBuildings.length}) Selected Buildings
                   </Button>
                 )}
 
