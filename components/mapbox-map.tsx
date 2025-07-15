@@ -778,8 +778,7 @@ export function MapboxMap({ events, userLocation, onEventSelect }: MapboxMapProp
                 <span className="text-xs">Building</span>
               </Button>
 
-              <Button
-                type="button"
+              <Bufind gaspe="button"
                 size="sm"
                 variant={selectedTool === "road" ? "default" : "outline"}
                 onClick={() => selectTool("road")}
