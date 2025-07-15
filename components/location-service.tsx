@@ -1,6 +1,8 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { Loader2 } from "lucide-react"
+import { Button } from "@/components/ui/button"
 
 interface LocationState {
   coordinates: [number, number] | null
@@ -10,7 +12,12 @@ interface LocationState {
   status: "idle" | "requesting" | "granted" | "denied"
 }
 
-export function useLocationService() {
+interface LocationServiceProps {
+  onLocationUpdate: (location: [number, number] | null) => void
+  onLocationError: (error: string) => void
+}
+
+export function LocationService({ onLocationUpdate, onLocationError }: LocationServiceProps) {
   const [locationState, setLocationState] = useState<LocationState>({
     coordinates: null,
     accuracy: null,
@@ -19,7 +26,15 @@ export function useLocationService() {
     status: "idle",
   })
 
-  const requestLocation = (options?: PositionOptions) => {
+  useEffect(() => {
+    if (locationState.status === "granted" && locationState.coordinates) {
+      onLocationUpdate(locationState.coordinates)
+    } else if (locationState.status === "denied" && locationState.error) {
+      onLocationError(locationState.error)
+    }
+  }, [locationState, onLocationUpdate, onLocationError])
+
+  const requestLocation = () => {
     if (!navigator.geolocation) {
       setLocationState((prev) => ({
         ...prev,
@@ -35,11 +50,10 @@ export function useLocationService() {
       error: null,
     }))
 
-    const defaultOptions: PositionOptions = {
+    const options = {
       enableHighAccuracy: true,
       timeout: 15000,
       maximumAge: 300000, // 5 minutes
-      ...options,
     }
 
     navigator.geolocation.getCurrentPosition(
@@ -72,86 +86,22 @@ export function useLocationService() {
           error: errorMessage,
         }))
       },
-      defaultOptions,
+      options,
     )
   }
 
-  const watchLocation = (options?: PositionOptions) => {
-    if (!navigator.geolocation) {
-      setLocationState((prev) => ({
-        ...prev,
-        status: "denied",
-        error: "Geolocation is not supported by your browser",
-      }))
-      return null
-    }
-
-    const defaultOptions: PositionOptions = {
-      enableHighAccuracy: true,
-      timeout: 15000,
-      maximumAge: 60000, // 1 minute for watch
-      ...options,
-    }
-
-    const watchId = navigator.geolocation.watchPosition(
-      (position) => {
-        setLocationState({
-          coordinates: [position.coords.longitude, position.coords.latitude],
-          accuracy: position.coords.accuracy,
-          timestamp: position.timestamp,
-          error: null,
-          status: "granted",
-        })
-      },
-      (error) => {
-        let errorMessage = "An error occurred while watching your location."
-        switch (error.code) {
-          case error.PERMISSION_DENIED:
-            errorMessage = "Location access was denied."
-            break
-          case error.POSITION_UNAVAILABLE:
-            errorMessage = "Your location is currently unavailable."
-            break
-          case error.TIMEOUT:
-            errorMessage = "Location request timed out."
-            break
-        }
-
-        setLocationState((prev) => ({
-          ...prev,
-          status: "denied",
-          error: errorMessage,
-        }))
-      },
-      defaultOptions,
-    )
-
-    return watchId
-  }
-
-  const clearWatch = (watchId: number) => {
-    navigator.geolocation.clearWatch(watchId)
-  }
-
-  const calculateDistance = (coord1: [number, number], coord2: [number, number]) => {
-    const R = 3959 // Earth's radius in miles
-    const dLat = ((coord2[1] - coord1[1]) * Math.PI) / 180
-    const dLon = ((coord2[0] - coord1[0]) * Math.PI) / 180
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos((coord1[1] * Math.PI) / 180) *
-        Math.cos((coord2[1] * Math.PI) / 180) *
-        Math.sin(dLon / 2) *
-        Math.sin(dLon / 2)
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-    return R * c
-  }
-
-  return {
-    ...locationState,
-    requestLocation,
-    watchLocation,
-    clearWatch,
-    calculateDistance,
-  }
+  return (
+    <div>
+      <Button onClick={requestLocation} disabled={locationState.status === "requesting"}>
+        {locationState.status === "requesting" ? (
+          <>
+            <Loader2 className="w-4 h-4 animate-spin mr-2" />
+            Getting Location
+          </>
+        ) : (
+          "Get My Location"
+        )}
+      </Button>
+    </div>
+  )
 }
